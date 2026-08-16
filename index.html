@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CatVerse</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Real In-Browser AI Image Recognition (TensorFlow.js + MobileNet) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+    <!-- Real-Time Global Cloud Sync (GunDB WebSockets) -->
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+</head>
+<body>
+    <!-- HEADER -->
+    <header class="fb-header">
+        <div class="fb-header-left">
+            <div class="logo">
+                <span class="logo-emoji">🐾</span>
+                <span class="brand-text">CatVerse</span>
+            </div>
+            <div class="search-bar">
+                <label for="searchInput" class="sr-only">Search</label>
+                <input type="text" id="searchInput" placeholder="Search CatVerse">
+            </div>
+        </div>
+        
+        <nav class="fb-header-center">
+            <button class="nav-tab active" data-feed="home" title="Home">🏠</button>
+            <button class="nav-tab" data-feed="friends" title="Friends">👥</button>
+            <button class="nav-tab" data-feed="cattakes" title="CatTakes">🎬</button>
+            <button class="nav-tab" data-feed="cats" title="Cats">🐾</button>
+            <button class="nav-tab" data-feed="trending" title="Trending">🔥</button>
+            <button class="nav-tab" data-feed="saved" title="Saved">🔖</button>
+        </nav>
+        
+        <div class="fb-header-right">
+            <button id="themeToggleBtn" class="icon-btn" title="Toggle Theme (☀️ Light / 🌙 Dark)">☀️</button>
+            <button id="createCatBtn" class="icon-btn" title="Create Cat Photo">📸</button>
+            <button id="createTakeBtn" class="icon-btn" title="Create CatTake">🎥</button>
+            <button id="messengerBtn" class="icon-btn" title="Friends / Messages">💬</button>
+            <button id="notifBtn" class="icon-btn" title="Notifications">🔔</button>
+            
+            <div class="user-dropdown-container">
+                <button id="userAvatarBtn" class="avatar-btn" aria-label="User Menu" aria-haspopup="true">
+                    <img src="" alt="User Avatar" id="headerAvatar">
+                </button>
+                <div id="userDropdownMenu" class="dropdown-menu hidden">
+                    <ul>
+                        <li><button id="menuProfileBtn">My Profile</button></li>
+                        <li><button id="menuFriendsBtn">Friends</button></li>
+                        <li><button id="menuSavedBtn">Saved</button></li>
+                        <li><button id="menuSwitchBtn">Switch Account</button></li>
+                        <li><button id="menuResetBtn">Reset Data</button></li>
+                        <li><button id="menuLogoutBtn">Log Out</button></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN LAYOUT -->
+    <main class="fb-main-layout">
+        <!-- Left Sidebar -->
+        <aside class="fb-sidebar-left">
+            <div class="sidebar-user-link">
+                <a href="#" id="sidebarProfileLink">
+                    <img src="" alt="Profile" id="sidebarAvatar">
+                    <span id="sidebarUsername">User</span>
+                </a>
+            </div>
+            <ul class="sidebar-nav">
+                <li><button class="sidebar-item" data-side-feed="home">🏠 News Feed</button></li>
+                <li><button class="sidebar-item" data-side-feed="friends">👥 Friends</button></li>
+                <li><button class="sidebar-item" data-side-feed="saved">🔖 Saved Posts</button></li>
+            </ul>
+            <hr class="sidebar-divider">
+            <div class="sidebar-actions">
+                <button class="action-btn" id="sideCreateCatBtn">📸 New Cat Photo</button>
+                <button class="action-btn" id="sideCreateTakeBtn">🎥 New CatTake</button>
+            </div>
+            <hr class="sidebar-divider">
+            <footer class="sidebar-footer">
+                <p>CatVerse © 2026</p>
+            </footer>
+        </aside>
+
+        <!-- Center Feed -->
+        <section class="fb-feed-center">
+            <!-- INLINE CREATE POST CARD -->
+            <div class="create-post-card" id="inlineCreateCard">
+                <!-- Collapsed Top Row -->
+                <div class="create-post-top">
+                    <img src="" alt="Avatar" id="createPostAvatar">
+                    <button id="triggerCreatePostBtn" class="trigger-input-btn">What's your cat doing today?</button>
+                </div>
+                
+                <!-- Quick Action Buttons (Collapsed State) -->
+                <div class="create-post-actions" id="collapsedPostActions">
+                    <button class="action-row-btn" id="postActionCatPhoto">📸 Cat Photo</button>
+                    <button class="action-row-btn" id="postActionCatTake">🎥 CatTake Video</button>
+                    <button class="action-row-btn" id="postActionFeeling">😊 Feeling/Activity</button>
+                </div>
+
+                <!-- Expanded Inline Creation Area -->
+                <div id="expandedCreateArea" class="expanded-create-area hidden">
+                    <hr class="inline-divider">
+                    
+                    <!-- Post Type Switcher -->
+                    <div class="inline-type-tabs">
+                        <button type="button" class="inline-type-tab active" id="typeTabPhoto">📸 Cat Photo</button>
+                        <button type="button" class="inline-type-tab" id="typeTabVideo">🎬 CatTake Video</button>
+                    </div>
+
+                    <!-- 1. Cat Photo Form -->
+                    <form id="inlineCatForm" class="inline-post-form">
+                        <div class="form-group">
+                            <label for="inlineCatName" class="sr-only">Cat Name</label>
+                            <input type="text" id="inlineCatName" placeholder="Cat's Name (e.g. Luna, Milo, Whiskers)" class="inline-text-input" required>
+                        </div>
+                        
+                        <div class="photo-upload-dropzone inline-dropzone" id="inlineCatPhotoDropzone">
+                            <p>📸 Drag & drop your cat's photo or click to upload</p>
+                            <input type="file" id="inlineCatPhotoInput" accept="image/*" class="hidden-input">
+                            <div id="inlineCatPhotoPreviewWrapper" class="preview-wrapper hidden">
+                                <img id="inlineCatPhotoPreview" src="" alt="Cat Preview" crossorigin="anonymous">
+                            </div>
+                        </div>
+
+                        <!-- Real-Time AI Detector Banner -->
+                        <div class="ai-filter-box inline-ai-box">
+                            <div class="ai-filter-header">
+                                <span class="ai-badge">🤖 Neural AI Verification</span>
+                                <span class="ai-badge-sub">TensorFlow.js MobileNet</span>
+                            </div>
+                            <div id="inlineAiStatusBanner" class="status-banner status-idle" role="status">
+                                Upload a photo above to verify it's a cat.
+                            </div>
+                            <div id="inlineAiPredictionsList" class="ai-predictions-list hidden"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="inlineCatDescription" class="sr-only">Caption</label>
+                            <textarea id="inlineCatDescription" rows="2" placeholder="What is your cat up to? Share their story..." class="inline-textarea"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="inlineCatTags" class="sr-only">Tags</label>
+                            <input type="text" id="inlineCatTags" placeholder="Tags (e.g. tabby, sleepy, naptime)" class="inline-text-input">
+                        </div>
+
+                        <div class="inline-form-footer">
+                            <button type="button" class="cancel-btn" id="inlineCancelBtn">Cancel</button>
+                            <button type="submit" class="submit-btn" id="inlineSubmitCatBtn" disabled>Post Cat 🐾</button>
+                        </div>
+                    </form>
+
+                    <!-- 2. CatTake Video Form -->
+                    <form id="inlineTakeForm" class="inline-post-form hidden">
+                        <div class="ai-notice inline-ai-notice">
+                            <p>💡 CatTakes are short cat clips and videos (AI filter exempt).</p>
+                        </div>
+
+                        <div class="cattake-tabs inline-take-tabs" role="tablist">
+                            <button type="button" id="inlineTabTakeUpload" class="take-tab active">Upload Video</button>
+                            <button type="button" id="inlineTabTakeRecord" class="take-tab">Record Webcam</button>
+                        </div>
+
+                        <div id="inlineTakeUploadSection" class="take-section">
+                            <div class="photo-upload-dropzone inline-dropzone" id="inlineTakeVideoDropzone">
+                                <p>🎥 Drag & drop a video file or click to select</p>
+                                <input type="file" id="inlineTakeVideoInput" accept="video/*" class="hidden-input">
+                                <div id="inlineTakeVideoPreviewWrapper" class="preview-wrapper hidden">
+                                    <video id="inlineTakeVideoPreview" controls style="max-width:100%; border-radius:8px;"></video>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="inlineTakeRecordSection" class="take-section hidden">
+                            <div class="webcam-wrapper">
+                                <video id="inlineWebcamVideo" autoplay muted playsinline></video>
+                                <div id="inlineRecordingIndicator" class="recording-indicator hidden">🔴 Recording</div>
+                                <div id="inlineRecordingTimer" class="recording-timer hidden">00:00</div>
+                            </div>
+                            <div class="webcam-controls">
+                                <button type="button" id="inlineStartRecordingBtn" class="primary-btn">Start Recording</button>
+                                <button type="button" id="inlineStopRecordingBtn" class="danger-btn hidden">Stop Recording</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group mt-3">
+                            <label for="inlineTakeTitle" class="sr-only">Video Title</label>
+                            <input type="text" id="inlineTakeTitle" placeholder="Video Title (e.g. Mango chasing zoomies)" class="inline-text-input" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="inlineTakeDescription" class="sr-only">Description</label>
+                            <textarea id="inlineTakeDescription" rows="2" placeholder="What's happening in this video?" class="inline-textarea"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="inlineTakeTags" class="sr-only">Tags</label>
+                            <input type="text" id="inlineTakeTags" placeholder="Tags (e.g. zoomies, funny, play)" class="inline-text-input">
+                        </div>
+
+                        <div class="inline-form-footer">
+                            <button type="button" class="cancel-btn" id="inlineCancelTakeBtn">Cancel</button>
+                            <button type="submit" class="submit-btn" id="inlineSubmitTakeBtn">Post CatTake 🎬</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Feed Header Banner (When on special tabs like Friends) -->
+            <div id="feedTabHeader" class="feed-tab-header hidden">
+                <h3 id="feedTabTitle">Friends Feed</h3>
+                <p id="feedTabSubtitle">Posts from your friends</p>
+            </div>
+            
+            <!-- Feed Stream -->
+            <div id="fbFeedStream" class="feed-stream">
+                <!-- posts will go here -->
+            </div>
+            
+            <!-- Empty State -->
+            <div id="emptyFeedState" class="empty-state hidden">
+                <p id="emptyFeedText">No posts to show right now. Add friends or create the first post!</p>
+            </div>
+        </section>
+
+        <!-- Right Sidebar -->
+        <aside class="fb-sidebar-right">
+            <div class="contacts-header-row">
+                <h3 class="contacts-heading">Friends</h3>
+                <button id="findFriendsBtn" class="text-btn" title="Find Friends">Find Friends</button>
+            </div>
+            <div id="contactsList" class="contacts-list">
+                <!-- friends/users will go here -->
+            </div>
+        </aside>
+    </main>
+
+    <!-- AUTH MODAL -->
+    <div id="authModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+        <div class="modal-content auth-content">
+            <h2 id="authModalTitle">Welcome to CatVerse</h2>
+            <div class="auth-tabs" role="tablist">
+                <button id="tabLogin" class="auth-tab active" role="tab" aria-selected="true" aria-controls="loginForm">Log In</button>
+                <button id="tabSignup" class="auth-tab" role="tab" aria-selected="false" aria-controls="signupForm">Create Account</button>
+            </div>
+            
+            <form id="loginForm" class="auth-form" role="tabpanel">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" placeholder="e.g. catlover42" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="submit-btn">Log In</button>
+            </form>
+            
+            <form id="signupForm" class="auth-form hidden" role="tabpanel">
+                <div class="form-group">
+                    <label for="signupUsername">Username</label>
+                    <input type="text" id="signupUsername" placeholder="e.g. whiskers_fan" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Password</label>
+                    <input type="password" id="signupPassword" placeholder="Minimum 4 characters" required autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="signupBio">Bio</label>
+                    <textarea id="signupBio" rows="2" placeholder="Tell us about you and your cats..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Profile Picture (Mandatory)</label>
+                    <input type="file" id="signupPfpUpload" accept="image/*">
+                    <p class="field-hint">Or choose a preset avatar:</p>
+                    <div class="preset-avatars" aria-label="Preset Avatars">
+                        <img src="" class="preset-avatar" alt="Preset 1">
+                        <img src="" class="preset-avatar" alt="Preset 2">
+                        <img src="" class="preset-avatar" alt="Preset 3">
+                        <img src="" class="preset-avatar" alt="Preset 4">
+                        <img src="" class="preset-avatar" alt="Preset 5">
+                        <img src="" class="preset-avatar" alt="Preset 6">
+                    </div>
+                </div>
+                <div id="signupErrorBanner" class="error-banner hidden" role="alert"></div>
+                <button type="submit" class="submit-btn">Create Account</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- PROFILE MODAL -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="profileDisplayName">
+        <div class="modal-content profile-content">
+            <div class="profile-banner"></div>
+            <div class="profile-header">
+                <img id="profileAvatar" src="" alt="Avatar" class="profile-avatar">
+                <div class="profile-actions">
+                    <button id="profileFriendBtn" class="primary-btn">➕ Add Friend</button>
+                    <button id="profileFollowBtn" class="secondary-btn">Follow</button>
+                </div>
+            </div>
+            <div class="profile-info">
+                <h2 id="profileDisplayName">Display Name</h2>
+                <p id="profileHandle" class="handle">@handle</p>
+                <p id="profileBio" class="bio">Bio goes here</p>
+                <div class="profile-stats">
+                    <div class="stat"><span id="statPosts">0</span> Posts</div>
+                    <div class="stat"><span id="statFriends">0</span> Friends</div>
+                    <div class="stat"><span id="statFollowers">0</span> Followers</div>
+                    <div class="stat"><span id="statFollowing">0</span> Following</div>
+                </div>
+            </div>
+            <div class="profile-tabs">
+                <button class="profile-tab active" data-ptab="cats">Cats</button>
+                <button class="profile-tab" data-ptab="cattakes">CatTakes</button>
+            </div>
+            <div id="profileMediaGrid" class="media-grid">
+                <!-- media items -->
+            </div>
+        </div>
+    </div>
+
+    <!-- FIND FRIENDS MODAL / DISCOVERY -->
+    <div id="findFriendsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="findFriendsTitle">
+        <div class="modal-content">
+            <h2 id="findFriendsTitle">Find Friends on CatVerse</h2>
+            <div class="find-friends-search">
+                <input type="text" id="findFriendsSearchInput" placeholder="Search cat lovers by name or username...">
+            </div>
+            <div id="findFriendsList" class="find-friends-list">
+                <!-- User discovery cards -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="cancel-btn" id="closeFindFriendsBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MOBILE BOTTOM NAVIGATION -->
+    <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+        <button class="mobile-nav-btn active" data-feed="home">
+            <span class="mobile-nav-icon">🏠</span>
+            <span class="mobile-nav-label">Home</span>
+        </button>
+        <button class="mobile-nav-btn" data-feed="friends">
+            <span class="mobile-nav-icon">👥</span>
+            <span class="mobile-nav-label">Friends</span>
+        </button>
+        <button class="mobile-nav-btn mobile-nav-create-btn" id="mobileCreateBtn">
+            <span class="mobile-create-pill">➕ Post</span>
+        </button>
+        <button class="mobile-nav-btn" data-feed="cattakes">
+            <span class="mobile-nav-icon">🎬</span>
+            <span class="mobile-nav-label">CatTakes</span>
+        </button>
+        <button class="mobile-nav-btn" id="mobileProfileNavBtn">
+            <span class="mobile-nav-icon">👤</span>
+            <span class="mobile-nav-label">Profile</span>
+        </button>
+    </nav>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+    <!-- MAIN SCRIPT -->
+    <script src="app.js"></script>
+</body>
+</html>
