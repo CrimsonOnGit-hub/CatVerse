@@ -219,6 +219,17 @@ let ws = null;
 
 function initWebSocket() {
   if (location.protocol === 'file:') return;
+
+  // On GitHub Pages or static CDN hosts, GunDB manages all real-time cloud sync.
+  // Only connect to /ws if running on a real Node.js / MySQL backend host.
+  const isBackendHost = location.hostname === 'localhost' ||
+                        location.hostname === '127.0.0.1' ||
+                        location.port === '8085' ||
+                        location.port === '3000' ||
+                        location.port === '5000';
+
+  if (!isBackendHost) return;
+
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${location.host}/ws`;
 
