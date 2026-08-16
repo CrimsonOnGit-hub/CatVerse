@@ -73,8 +73,16 @@ const Store = {
     if (!this._data.users) this._data.users = {};
     if (!this._data.posts) this._data.posts = [];
 
+    // Purge deleted account @sebastian
+    if (this._data.users['sebastian']) delete this._data.users['sebastian'];
+    if (this._data.users['Sebastian']) delete this._data.users['Sebastian'];
+    this._data.posts = this._data.posts.filter(p => p.author !== 'sebastian' && p.author !== 'Sebastian');
+
     const activeSession = localStorage.getItem(SESSION_KEY);
-    if (activeSession && this._data.users[activeSession]) {
+    if (activeSession === 'sebastian' || activeSession === 'Sebastian') {
+      localStorage.removeItem(SESSION_KEY);
+      this._data.currentUser = null;
+    } else if (activeSession && this._data.users[activeSession]) {
       this._data.currentUser = activeSession;
     } else {
       this._data.currentUser = null;
@@ -178,6 +186,10 @@ function initCloudSync() {
     globalPostsNode = gun.get('catverse_global_posts_v4');
     globalUsersNode = gun.get('catverse_global_users_v4');
 
+    // Broadcast nullification for deleted accounts
+    globalUsersNode.get('sebastian').put(null);
+    globalUsersNode.get('Sebastian').put(null);
+
     // Real-Time Incoming Posts from Any Device Across the World
     globalPostsNode.map().on((postJson, postId) => {
       if (!postJson) {
@@ -190,7 +202,7 @@ function initCloudSync() {
       }
       try {
         const post = typeof postJson === 'string' ? JSON.parse(postJson) : postJson;
-        if (post && post.id) {
+        if (post && post.id && post.author !== 'sebastian' && post.author !== 'Sebastian') {
           const existingIdx = Store.data.posts.findIndex(p => p.id === post.id);
           if (existingIdx >= 0) {
             Store.data.posts[existingIdx] = post;
