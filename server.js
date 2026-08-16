@@ -273,25 +273,35 @@ app.get('/api/status', (req, res) => {
 // Auth: Sign Up
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { username, password, displayName, bio, avatar } = req.body;
+    const { username, email, password, displayName, bio, avatar } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
     const cleanUsername = username.trim().toLowerCase().replace(/\s+/g, '_');
+    const cleanEmail = email ? email.trim().toLowerCase() : null;
+
     const existing = await query('SELECT username FROM users WHERE username = ?', [cleanUsername]);
     if (existing.length > 0) {
       return res.status(400).json({ error: 'Username is already taken' });
     }
 
+    if (cleanEmail) {
+      const existingEmail = await query('SELECT username FROM users WHERE email = ?', [cleanEmail]);
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ error: 'Email is already registered' });
+      }
+    }
+
     const now = Date.now();
     await query(
-      'INSERT INTO users (username, password, display_name, bio, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [cleanUsername, password, displayName || cleanUsername, bio || '', avatar || '', now]
+      'INSERT INTO users (username, email, password, display_name, bio, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [cleanUsername, cleanEmail, password, displayName || cleanUsername, bio || '', avatar || '', now]
     );
 
     const newUser = {
       username: cleanUsername,
+      email: cleanEmail,
       displayName: displayName || cleanUsername,
       bio: bio || '',
       avatar: avatar || '',
@@ -307,15 +317,15 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-// Auth: Log In
+// Auth: Log In (Supports Username or Email)
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const cleanUsername = username?.trim().toLowerCase();
-    const rows = await query('SELECT * FROM users WHERE username = ?', [cleanUsername]);
+    const identifier = username?.trim().toLowerCase();
+    const rows = await query('SELECT * FROM users WHERE username = ? OR email = ?', [identifier, identifier]);
 
     if (rows.length === 0 || rows[0].password !== password) {
-      return res.status(401).json({ error: 'Invalid username or password' });
+      return res.status(401).json({ error: 'Invalid username/email or password' });
     }
 
     const user = rows[0];
@@ -323,16 +333,17 @@ app.post('/api/auth/login', async (req, res) => {
     // Fetch user's friends
     const friendRows = await query(
       'SELECT user_b as friend FROM friends WHERE user_a = ? UNION SELECT user_a as friend FROM friends WHERE user_b = ?',
-      [cleanUsername, cleanUsername]
+      [user.username, user.username]
     );
 
     // Fetch user's saved posts
-    const savedRows = await query('SELECT post_id FROM saved_posts WHERE username = ?', [cleanUsername]);
+    const savedRows = await query('SELECT post_id FROM saved_posts WHERE username = ?', [user.username]);
 
     res.json({
       success: true,
       user: {
         username: user.username,
+        email: user.email,
         displayName: user.display_name,
         bio: user.bio,
         avatar: user.avatar,

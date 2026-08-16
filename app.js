@@ -519,29 +519,33 @@ const App = {
 
   async handleLogin(e) {
     e.preventDefault();
-    const username = $('#loginUsername').value.trim().toLowerCase();
+    const identifier = $('#loginUsername').value.trim().toLowerCase();
     const password = $('#loginPassword').value;
 
     // Check backend first
     let user = null;
-    const res = await API.login(username, password);
+    const res = await API.login(identifier, password);
     if (res && res.success) {
       user = res.user;
     } else {
-      // Fallback to local store
-      const localUser = Store.data.users[username];
+      // Fallback to local store: match username OR email
+      const allUsers = Object.values(Store.data.users || {});
+      const localUser = allUsers.find(u => 
+        (u.username && u.username.toLowerCase() === identifier) ||
+        (u.email && u.email.toLowerCase() === identifier)
+      );
       if (localUser && localUser.password === password) {
         user = localUser;
       }
     }
 
     if (!user) {
-      showToast('Invalid username or password', 'error');
+      showToast('Invalid username/email or password', 'error');
       return;
     }
 
-    Store.data.users[username] = user;
-    Store.data.currentUser = username;
+    Store.data.users[user.username] = user;
+    Store.data.currentUser = user.username;
     Store.save();
     this.hideAuth();
     this.enterApp();
@@ -554,11 +558,17 @@ const App = {
     banner.classList.add('hidden');
 
     const username = $('#signupUsername').value.trim().toLowerCase().replace(/\s+/g, '_');
+    const email = $('#signupEmail')?.value.trim().toLowerCase() || null;
     const password = $('#signupPassword').value;
     const bio = $('#signupBio').value.trim();
 
     if (!username || username.length < 3) {
       banner.textContent = 'Username must be at least 3 characters.';
+      banner.classList.remove('hidden');
+      return;
+    }
+    if (email && (!email.includes('@') || !email.includes('.'))) {
+      banner.textContent = 'Please enter a valid email address.';
       banner.classList.remove('hidden');
       return;
     }
@@ -573,6 +583,15 @@ const App = {
       banner.textContent = `The username "@${username}" is already taken. Please choose another username or log in.`;
       banner.classList.remove('hidden');
       return;
+    }
+
+    if (email) {
+      const emailExists = Object.values(Store.data.users || {}).some(u => u.email && u.email.toLowerCase() === email);
+      if (emailExists) {
+        banner.textContent = `The email "${email}" is already registered. Please log in instead.`;
+        banner.classList.remove('hidden');
+        return;
+      }
     }
 
     const pfpInput = $('#signupPfpUpload');
@@ -595,6 +614,7 @@ const App = {
       const displayName = username.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       const newUser = {
         username,
+        email: email || null,
         password,
         displayName,
         bio: bio || 'Proud cat parent 🐾',
@@ -622,6 +642,7 @@ const App = {
       this.enterApp();
       showToast('Account created! Welcome to CatVerse! 🎉', 'success');
       $('#signupUsername').value = '';
+      if ($('#signupEmail')) $('#signupEmail').value = '';
       $('#signupPassword').value = '';
       $('#signupBio').value = '';
       this.selectedSignupAvatar = null;
