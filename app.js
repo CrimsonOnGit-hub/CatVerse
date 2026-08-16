@@ -114,7 +114,19 @@ const Store = {
 const API = {
   backendAvailable: null,
 
+  isBackendHost() {
+    return location.hostname === 'localhost' ||
+           location.hostname === '127.0.0.1' ||
+           location.port === '8085' ||
+           location.port === '3000' ||
+           location.port === '5000';
+  },
+
   async req(endpoint, options = {}) {
+    // On static hosts like GitHub Pages, skip /api calls to prevent 404 logs
+    if (!this.isBackendHost()) {
+      return null;
+    }
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
