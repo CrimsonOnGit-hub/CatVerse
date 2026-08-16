@@ -308,12 +308,12 @@
                 <div class="stat-val" id="statPosts">0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Verified Cat Photos</div>
+                <div class="stat-label">Cat Photos</div>
                 <div class="stat-val" id="statCats">0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Non-Cat Posts</div>
-                <div class="stat-val" id="statNonCats">0</div>
+                <div class="stat-label">CatTake Videos</div>
+                <div class="stat-val" id="statTakes">0</div>
             </div>
         </div>
 
@@ -366,10 +366,9 @@
                     <thead>
                         <tr>
                             <th>Media</th>
-                            <th>Type & Category</th>
+                            <th>Type</th>
                             <th>Author</th>
                             <th>Subject / Title</th>
-                            <th>AI Detection</th>
                             <th>Likes / Comments</th>
                             <th>Time</th>
                             <th>Actions</th>
@@ -419,9 +418,10 @@
         try {
             gun = Gun({
                 peers: [
-                    'https://gun-manhattan.herokuapp.com/gun',
+                    'https://peer.waller.li/gun',
                     'https://relay.peer.ooo/gun',
-                    'https://peer.waller.li/gun'
+                    'https://gun-us.herokuapp.com/gun',
+                    'https://dletta.rig.craftws.com/gun'
                 ],
                 localStorage: false
             });
@@ -497,8 +497,8 @@
             const uList = Object.values(activeUsers);
             document.getElementById('statUsers').textContent = uList.length;
             document.getElementById('statPosts').textContent = activePosts.length;
-            document.getElementById('statCats').textContent = activePosts.filter(p => p.isCat !== false && p.type !== 'non-cat').length;
-            document.getElementById('statNonCats').textContent = activePosts.filter(p => p.isCat === false || p.type === 'non-cat' || p.category === 'non-cats').length;
+            document.getElementById('statCats').textContent = activePosts.filter(p => p.type === 'cat').length;
+            document.getElementById('statTakes').textContent = activePosts.filter(p => p.type === 'cattake').length;
 
             document.getElementById('userCount').textContent = uList.length;
             document.getElementById('postCount').textContent = activePosts.length;
@@ -556,15 +556,14 @@
             );
 
             if (pList.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:20px;">No posts found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:20px;">No posts found.</td></tr>`;
                 return;
             }
 
             pList.forEach(p => {
-                const isNonCat = p.isCat === false || p.type === 'non-cat' || p.category === 'non-cats';
                 const isTake = p.type === 'cattake';
-                const badgeClass = isNonCat ? 'badge-noncat' : (isTake ? 'badge-take' : 'badge-cat');
-                const badgeText = isNonCat ? '🚫 Non-Cat' : (isTake ? '🎬 CatTake' : '🐾 Cat Photo');
+                const badgeClass = isTake ? 'badge-take' : 'badge-cat';
+                const badgeText = isTake ? '🎬 CatTake' : '🐾 Cat Photo';
 
                 const mediaEl = p.media ? 
                     (p.mediaType === 'video' ? `<video src="${p.media}" class="media-preview-sm" controls></video>` : `<img src="${p.media}" class="media-preview-sm">`)
@@ -576,7 +575,6 @@
                     <td><span class="badge ${badgeClass}">${badgeText}</span></td>
                     <td><strong>@${escapeHtml(p.author)}</strong></td>
                     <td>${escapeHtml(p.catName || p.title || p.description || 'Post')}</td>
-                    <td><small>${escapeHtml(p.aiBreed || p.nonCatLabel || 'N/A')} (${p.aiConfidence || 100}%)</small></td>
                     <td>❤️ ${(p.likes || []).length} &nbsp;💬 ${(p.comments || []).length}</td>
                     <td style="color:var(--text-muted); font-size:11px;">${new Date(p.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
                     <td>
@@ -584,7 +582,6 @@
                     </td>
                 `;
                 tbody.appendChild(tr);
-            });
         }
 
         // Actions

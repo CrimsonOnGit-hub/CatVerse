@@ -8,20 +8,6 @@
 const DB_KEY = 'catverse_db_v5_clean';
 const SESSION_KEY = 'catverse_session_v5_clean';
 
-// Cat / Feline related ImageNet class keywords for MobileNet AI detection
-const FELINE_KEYWORDS = [
-  'cat', 'tabby', 'tiger cat', 'persian cat', 'siamese cat', 'siamese', 'egyptian cat',
-  'cougar', 'lynx', 'leopard', 'snow leopard', 'jaguar', 'lion', 'cheetah',
-  'panther', 'feline', 'kitten', 'angora', 'burmese', 'abyssinian',
-  'ragdoll', 'sphynx', 'bengal', 'mainecoon', 'manx', 'savannah',
-  'norwegian forest', 'domestic cat', 'felis', 'seal point', 'blue point',
-  'chocolate point', 'lilac point', 'balinese', 'oriental shorthair', 'birman',
-  'himalayan', 'chartreux', 'russian blue', 'korat', 'tonkinese', 'singapura',
-  'somali', 'devon rex', 'cornish rex', 'british shorthair', 'american shorthair',
-  'scottish fold', 'selkirk rex', 'munchkin', 'turkish van', 'turkish angora',
-  'caracal', 'serval', 'ocelot', 'bobcat', 'jaguarundi', 'margay', 'wildcat', 'pussycat'
-];
-
 // ─── Preset Avatars (SVG data-URIs) ─────────────────────────
 function generatePresetAvatar(index) {
   const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'];
@@ -492,26 +478,6 @@ function showToast(message, type = 'info') {
   }, 3500);
 }
 
-// ─── Real AI Classifier (MobileNet via TensorFlow.js) ────────
-let mobilenetModel = null;
-let isModelLoading = false;
-
-async function loadAIClassifier() {
-  if (mobilenetModel) return mobilenetModel;
-  if (isModelLoading) return null;
-  if (typeof mobilenet === 'undefined') return null;
-  try {
-    isModelLoading = true;
-    mobilenetModel = await mobilenet.load({ version: 2, alpha: 1.0 });
-    console.log('✅ MobileNet neural network loaded.');
-    return mobilenetModel;
-  } catch (err) {
-    return null;
-  } finally {
-    isModelLoading = false;
-  }
-}
-
 // ─── App Controller ──────────────────────────────────────────
 const App = {
   currentFeed: 'home',
@@ -523,8 +489,6 @@ const App = {
   selectedSignupAvatar: null,
   uploadedCatPhoto: null,
   uploadedTakeVideo: null,
-  aiDetectedBreed: null,
-  aiConfidence: null,
   profileTab: 'cats',
   viewingUser: null,
   inlinePostType: 'photo',
@@ -536,7 +500,6 @@ const App = {
     this.setupPresetAvatars();
     this.bindEvents();
 
-    loadAIClassifier();
     initCloudSync();
     initWebSocket();
 
@@ -919,184 +882,7 @@ const App = {
     }
   },
 
-  // ── Advanced Multi-Crop AI Vision Engine ──────────────────
-  async runAICatDetection(imageElement) {
-    const banner = $('#inlineAiStatusBanner');
-    const predList = $('#inlineAiPredictionsList');
-    const submitBtn = $('#inlineSubmitCatBtn');
-
-    banner.className = 'status-banner status-loading';
-    banner.textContent = '⏳ AI analyzing photo... (Multi-region neural scan running)';
-    predList.classList.add('hidden');
-    predList.innerHTML = '';
-    submitBtn.disabled = false;
-    this.aiDetectedBreed = null;
-    this.aiConfidence = null;
-
-    const INANIMATE_CONTAINER_KEYWORDS = [
-      'crate', 'carton', 'hamper', 'basket', 'shopping basket', 'box', 'carrier',
-      'pillow', 'quilt', 'cushion', 'velvet', 'wool', 'radiator', 'doormat',
-      'bath towel', 'paper towel', 'plastic bag', 'studio couch', 'couch',
-      'wardrobe', 'cradle', 'crib', 'washbasin', 'tub', 'sliding door', 'window shade',
-      'dining table', 'coffee table', 'desk', 'rug', 'carpet', 'blanket', 'tile', 'patio'
-    ];
-
-    try {
-      let model = await loadAIClassifier();
-      if (!model) {
-        banner.className = 'status-banner status-pass';
-        banner.textContent = '✅ Photo loaded. AI ready.';
-        return;
-      }
-
-      // 1. Full Image Classification (Top 25)
-      let allPredictions = [];
-      const fullPreds = await model.classify(imageElement, 25);
-      if (fullPreds) allPredictions.push(...fullPreds);
-
-      // 2. Center-Focus Crop (Focus on the Cat, exclude background crate/bed)
-      try {
-        const iw = imageElement.naturalWidth || imageElement.width || 300;
-        const ih = imageElement.naturalHeight || imageElement.height || 300;
-        
-        const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = 224;
-        cropCanvas.height = 224;
-        const ctx = cropCanvas.getContext('2d');
-        
-        // Center 60% crop
-        ctx.drawImage(
-          imageElement,
-          iw * 0.15, ih * 0.15, iw * 0.70, ih * 0.70,
-          0, 0, 224, 224
-        );
-        const centerPreds = await model.classify(cropCanvas, 20);
-        if (centerPreds) allPredictions.push(...centerPreds);
-      } catch (e) {}
-
-      if (allPredictions.length === 0) {
-        banner.className = 'status-banner status-pass';
-        banner.textContent = '✅ Photo loaded.';
-        return;
-      }
-
-      // 3. Aggregate Probabilities by Class
-      const classScores = {};
-      allPredictions.forEach(p => {
-        const name = p.className.toLowerCase();
-        classScores[name] = (classScores[name] || 0) + p.probability;
-      });
-
-      // 4. Find Feline Matches & Check for Inanimate Background Containers
-      let bestFelineMatch = null;
-      let totalFelineScore = 0;
-      let isTabby = false;
-      let hasCollarOrBell = false;
-
-      Object.entries(classScores).forEach(([name, score]) => {
-        const isFeline = FELINE_KEYWORDS.some(k => name.includes(k));
-        if (isFeline) {
-          totalFelineScore += score;
-          if (!bestFelineMatch || score > bestFelineMatch.score) {
-            bestFelineMatch = { name, score };
-          }
-        }
-        if (name.includes('tabby') || name.includes('tiger cat')) isTabby = true;
-        if (name.includes('bell') || name.includes('collar') || name.includes('chime') || name.includes('whistle') || name.includes('bow')) {
-          hasCollarOrBell = true;
-        }
-      });
-
-      // 5. Image Pixel Analysis for Red Collar (Tika) & Siamese Mask
-      let hasRedCollar = false;
-      let hasSiameseColorPattern = false;
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 100;
-        canvas.height = 100;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(imageElement, 0, 0, 100, 100);
-        const imgData = ctx.getContext ? ctx.getImageData(0, 0, 100, 100).data : [];
-        let redCount = 0;
-        let darkPoints = 0;
-        let lightBody = 0;
-        
-        for (let i = 0; i < imgData.length; i += 4) {
-          const r = imgData[i];
-          const g = imgData[i + 1];
-          const b = imgData[i + 2];
-          if (r > 130 && r > g * 1.5 && r > b * 1.5) redCount++;
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          if (lum < 60) darkPoints++;
-          if (lum > 140) lightBody++;
-        }
-        if (redCount > 15) hasRedCollar = true;
-        if (darkPoints > 200 && lightBody > 400) hasSiameseColorPattern = true;
-      } catch (e) {}
-
-      // 6. Filter out background containers when any feline is present
-      const sortedClasses = Object.entries(classScores)
-        .sort((a, b) => b[1] - a[1]);
-
-      predList.innerHTML = sortedClasses.slice(0, 5).map(([name, score]) => {
-        const isMatch = FELINE_KEYWORDS.some(k => name.includes(k));
-        const pct = Math.min(99, Math.round(score * 50));
-        return `<span class="ai-pred-chip ${isMatch ? 'match' : ''}">${name.split(',')[0]} (${pct}%)</span>`;
-      }).join('');
-      predList.classList.remove('hidden');
-
-      const isTikaEasterEgg = (isTabby || bestFelineMatch) && (hasCollarOrBell || hasRedCollar);
-      const isSiamese = (bestFelineMatch && bestFelineMatch.name.includes('siamese')) || 
-                        (hasSiameseColorPattern && (bestFelineMatch || totalFelineScore > 0.02));
-
-      // If feline detected anywhere or Siamese/Tika detected -> Categorize as Cat!
-      if (bestFelineMatch || totalFelineScore >= 0.015 || isSiamese || isTikaEasterEgg) {
-        this.aiIsCat = true;
-        let primaryBreed = bestFelineMatch ? bestFelineMatch.name.split(',')[0] : 'Domestic Cat';
-        let pct = Math.min(98, Math.max(85, Math.round((totalFelineScore || 0.8) * 60)));
-
-        if (isTikaEasterEgg) {
-          primaryBreed = 'Tika ✨ (Tabby with Red Bell Collar)';
-          this.isTikaEasterEgg = true;
-          const tagInput = $('#inlineCatTags');
-          if (tagInput && (!tagInput.value || tagInput.value.includes('tabby'))) {
-            tagInput.value = tagInput.value ? tagInput.value.replace(/tabby/gi, 'Tika') : 'Tika';
-          }
-          banner.className = 'status-banner status-pass';
-          banner.textContent = `✨ Easter Egg Unlocked: Tika detected! 🔔 (Tabby with Red Bell Collar)`;
-        } else if (isSiamese || primaryBreed.toLowerCase().includes('siamese')) {
-          this.isTikaEasterEgg = false;
-          primaryBreed = 'Siamese Cat';
-          pct = Math.max(pct, 92);
-          banner.className = 'status-banner status-pass';
-          banner.textContent = `✅ AI Verified: ${primaryBreed} (${pct}% confidence). Cat detected!`;
-        } else {
-          this.isTikaEasterEgg = false;
-          primaryBreed = primaryBreed.charAt(0).toUpperCase() + primaryBreed.slice(1);
-          banner.className = 'status-banner status-pass';
-          banner.textContent = `✅ AI Verified: ${primaryBreed} (${pct}% confidence). Cat detected!`;
-        }
-
-        this.aiDetectedBreed = primaryBreed;
-        this.aiConfidence = pct;
-      } else {
-        // True Non-Cat Subject
-        this.aiIsCat = false;
-        this.isTikaEasterEgg = false;
-        const topNonCat = sortedClasses[0] ? sortedClasses[0][0].split(',')[0] : 'Object';
-        const topPct = Math.min(99, Math.round((sortedClasses[0] ? sortedClasses[0][1] : 0.8) * 50));
-        banner.className = 'status-banner status-pass';
-        banner.textContent = `ℹ️ AI Categorization: Detected "${topNonCat}" (${topPct}%). Will be categorized as Non-Cat.`;
-        this.aiDetectedBreed = topNonCat;
-        this.aiConfidence = topPct;
-      }
-    } catch (err) {
-      banner.className = 'status-banner status-pass';
-      banner.textContent = '✅ Photo loaded.';
-      submitBtn.disabled = false;
-    }
-  },
-
+  // ── Cat Photo Upload & Submission ────────────────────────
   async handleCatPhotoUpload(file) {
     if (!file || !file.type.startsWith('image/')) {
       showToast('Please select an image file', 'error');
@@ -1109,49 +895,30 @@ const App = {
     previewImg.src = dataUrl;
     $('#inlineCatPhotoPreviewWrapper')?.classList.remove('hidden');
     $('#inlineSubmitCatBtn').disabled = false;
-
-    previewImg.onload = () => {
-      this.runAICatDetection(previewImg);
-    };
   },
 
   async handleInlineCatSubmit(e) {
     e.preventDefault();
     const catName = $('#inlineCatName').value.trim();
     const description = $('#inlineCatDescription').value.trim();
-    let tags = $('#inlineCatTags').value.trim().split(',').map(t => t.trim()).filter(Boolean);
-
-    // Easter egg tag conversion: if Tika easter egg is active
-    if (this.isTikaEasterEgg) {
-      tags = tags.map(t => t.toLowerCase() === 'tabby' ? 'Tika' : t);
-      if (!tags.includes('Tika')) {
-        tags.unshift('Tika');
-      }
-    }
+    const tags = $('#inlineCatTags').value.trim().split(',').map(t => t.trim()).filter(Boolean);
 
     if (!this.uploadedCatPhoto) {
       showToast('Please upload a photo', 'error');
       return;
     }
 
-    const isCat = this.aiIsCat !== false;
-
     const newPost = {
       id: uniqueId(),
-      type: isCat ? 'cat' : 'non-cat',
-      category: isCat ? 'cats' : 'non-cats',
-      isCat: isCat,
+      type: 'cat',
       author: Store.data.currentUser,
-      catName: catName || (isCat ? 'Cat Photo' : 'Non-Cat Post'),
-      description: description || (isCat ? `Meet ${catName || 'my cat'}! 🐾` : 'Non-cat photo'),
+      catName: catName || 'Cat Photo',
+      description: description || (catName ? `Meet ${catName}! 🐾` : 'Check out this cat! 🐾'),
       media: this.uploadedCatPhoto,
       mediaType: 'image',
       tags,
       likes: [],
       comments: [],
-      aiBreed: isCat ? (this.aiDetectedBreed || 'Domestic Cat') : null,
-      nonCatLabel: !isCat ? (this.aiDetectedBreed || 'Object') : null,
-      aiConfidence: this.aiConfidence || 100,
       timestamp: Date.now(),
     };
 
@@ -1165,8 +932,8 @@ const App = {
     API.createPost(newPost).catch(() => {});
 
     this.closeInlineCreate();
-    this.switchFeed(isCat ? 'home' : 'non-cats');
-    showToast(isCat ? `${newPost.catName} has been posted! 🐾` : 'Post added to Non-Cats! 🚫', 'success');
+    this.switchFeed('home');
+    showToast(`${newPost.catName} has been posted! 🐾`, 'success');
   },
 
   // ── CatTake Video Handlers ────────────────────────────────
@@ -1338,14 +1105,9 @@ const App = {
       posts = posts.filter(p => friendList.includes(p.author) || p.author === currentUser);
     } else if (this.currentFeed === 'cats') {
       tabHeader.classList.remove('hidden');
-      tabTitle.textContent = '🐾 Cats Feed';
-      tabSub.textContent = 'AI-verified cat photography and clips';
-      posts = posts.filter(p => p.type === 'cat' && p.isCat !== false);
-    } else if (this.currentFeed === 'non-cats') {
-      tabHeader.classList.remove('hidden');
-      tabTitle.textContent = '🚫 Non-Cats Feed';
-      tabSub.textContent = 'Photos categorized as non-feline subjects';
-      posts = posts.filter(p => p.type === 'non-cat' || p.isCat === false || p.category === 'non-cats');
+      tabTitle.textContent = '🐾 Cat Photos';
+      tabSub.textContent = 'All cat photos shared by the community';
+      posts = posts.filter(p => p.type === 'cat');
     } else if (this.currentFeed === 'cattakes') {
       tabHeader.classList.remove('hidden');
       tabTitle.textContent = '🎬 CatTakes';
@@ -1376,8 +1138,6 @@ const App = {
         emptyText.textContent = 'No posts from friends yet. Add friends to populate your feed!';
       } else if (this.currentFeed === 'saved') {
         emptyText.textContent = 'You haven\'t saved any posts yet. Click "Save" on any post to bookmark it.';
-      } else if (this.currentFeed === 'non-cats') {
-        emptyText.textContent = 'No non-cat posts yet. Any uploaded photos classified as non-cats will appear here!';
       } else {
         emptyText.textContent = 'No posts yet! Be the first to share a post with "What\'s your cat doing today?" above.';
       }
@@ -1439,16 +1199,7 @@ const App = {
       titleHtml = `<h3 class="post-title">${escapeHtml(post.title)}</h3>`;
     }
 
-    const isNonCat = post.type === 'non-cat' || post.isCat === false || post.category === 'non-cats';
-
-    let aiBadge = '';
-    if (isNonCat) {
-      aiBadge = `<span class="post-ai-pill non-cat-pill">🚫 Non-Cat: ${escapeHtml(post.nonCatLabel || post.aiBreed || 'Object')}</span>`;
-    } else if (post.aiBreed) {
-      aiBadge = `<span class="post-ai-pill">🐾 ${escapeHtml(post.aiBreed)}</span>`;
-    }
-
-    const typeLabel = (post.type === 'cattake') ? '🎬 CatTake' : (isNonCat ? '🚫 Non-Cat' : '🐾 Cat Photo');
+    const typeLabel = (post.type === 'cattake') ? '🎬 CatTake' : '🐾 Cat Photo';
 
     card.innerHTML = `
       <div class="post-header">
@@ -1460,7 +1211,6 @@ const App = {
           </div>
           <div class="post-meta-row">
             <span class="post-timestamp">${timeAgo(post.timestamp)} · ${typeLabel}</span>
-            ${aiBadge}
           </div>
         </div>
         <div class="post-menu-container">

@@ -9,9 +9,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Real In-Browser AI Image Recognition (TensorFlow.js + MobileNet) -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
     <!-- Real-Time Global Cloud Sync (GunDB + Global WebSockets) -->
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.4/dist/mqtt.min.js"></script>
@@ -33,7 +30,6 @@
         <nav class="fb-header-center">
             <button class="nav-tab active" data-feed="home" title="Home">🏠</button>
             <button class="nav-tab" data-feed="cats" title="Cats">🐾</button>
-            <button class="nav-tab" data-feed="non-cats" title="Non-Cats">🚫 Non-Cats</button>
             <button class="nav-tab" data-feed="cattakes" title="CatTakes">🎬</button>
             <button class="nav-tab" data-feed="friends" title="Friends">👥</button>
             <button class="nav-tab" data-feed="saved" title="Saved">🔖</button>
@@ -77,8 +73,7 @@
             </div>
             <ul class="sidebar-nav">
                 <li><button class="sidebar-item active" data-side-feed="home">🏠 News Feed</button></li>
-                <li><button class="sidebar-item" data-side-feed="cats">🐾 Cats</button></li>
-                <li><button class="sidebar-item" data-side-feed="non-cats">🚫 Non-Cats</button></li>
+                <li><button class="sidebar-item" data-side-feed="cats">🐾 Cat Photos</button></li>
                 <li><button class="sidebar-item" data-side-feed="cattakes">🎬 CatTakes</button></li>
                 <li><button class="sidebar-item" data-side-feed="friends">👥 Friends</button></li>
                 <li><button class="sidebar-item" data-side-feed="saved">🔖 Saved Posts</button></li>
@@ -132,20 +127,8 @@
                             <p>📸 Drag & drop your cat's photo or click to upload</p>
                             <input type="file" id="inlineCatPhotoInput" accept="image/*" class="hidden-input">
                             <div id="inlineCatPhotoPreviewWrapper" class="preview-wrapper hidden">
-                                <img id="inlineCatPhotoPreview" src="" alt="Cat Preview" crossorigin="anonymous">
+                                <img id="inlineCatPhotoPreview" src="" alt="Cat Preview">
                             </div>
-                        </div>
-
-                        <!-- Real-Time AI Detector Banner -->
-                        <div class="ai-filter-box inline-ai-box">
-                            <div class="ai-filter-header">
-                                <span class="ai-badge">🤖 Neural AI Verification</span>
-                                <span class="ai-badge-sub">TensorFlow.js MobileNet</span>
-                            </div>
-                            <div id="inlineAiStatusBanner" class="status-banner status-idle" role="status">
-                                Upload a photo above to verify it's a cat.
-                            </div>
-                            <div id="inlineAiPredictionsList" class="ai-predictions-list hidden"></div>
                         </div>
 
                         <div class="form-group">
@@ -160,7 +143,7 @@
 
                         <div class="inline-form-footer">
                             <button type="button" class="cancel-btn" id="inlineCancelBtn">Cancel</button>
-                            <button type="submit" class="submit-btn" id="inlineSubmitCatBtn" disabled>Post Cat 🐾</button>
+                            <button type="submit" class="submit-btn" id="inlineSubmitCatBtn">Post Cat 🐾</button>
                         </div>
                     </form>
 
