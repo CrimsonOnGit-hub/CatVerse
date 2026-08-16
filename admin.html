@@ -403,8 +403,13 @@
     <div id="toast"></div>
 
     <script>
-        const DB_KEY = 'catverse_db_v5_clean';
-        const SESSION_KEY = 'catverse_session_v5_clean';
+        const DB_KEY = 'catverse_master_db';
+        const SESSION_KEY = 'catverse_master_session';
+
+        const LEGACY_DB_KEYS = [
+            'catverse_db_v5_clean', 'catverse_db_v4_clean', 'catverse_db_v3',
+            'catverse_db_v2', 'catverse_db_v1', 'catverse_db', 'meowsnap_db_v2', 'meowsnap_db'
+        ];
 
         let gun = null;
         let globalPostsNode = null;
@@ -425,8 +430,8 @@
                 ],
                 localStorage: false
             });
-            globalPostsNode = gun.get('catverse_global_posts_v5');
-            globalUsersNode = gun.get('catverse_global_users_v5');
+            globalPostsNode = gun.get('catverse_master_posts');
+            globalUsersNode = gun.get('catverse_master_users');
 
             globalUsersNode.map().on((userJson, uName) => {
                 if (!userJson) {
@@ -456,8 +461,9 @@
             console.warn('Gun cloud init:', e);
         }
 
-        // Load local storage initial state
+        // Load local storage initial state with legacy data preservation
         function loadLocalData() {
+            // Check master db
             try {
                 const raw = localStorage.getItem(DB_KEY);
                 if (raw) {
@@ -470,6 +476,22 @@
                     }
                 }
             } catch(e) {}
+
+            // Scan legacy keys
+            for (const k of LEGACY_DB_KEYS) {
+                try {
+                    const raw = localStorage.getItem(k);
+                    if (raw) {
+                        const data = JSON.parse(raw);
+                        if (data.users) activeUsers = { ...data.users, ...activeUsers };
+                        if (data.posts && Array.isArray(data.posts)) {
+                            const map = new Map();
+                            [...activePosts, ...data.posts].forEach(p => { if (p && p.id) map.set(p.id, p); });
+                            activePosts = Array.from(map.values());
+                        }
+                    }
+                } catch(e) {}
+            }
         }
 
         function saveLocalData() {

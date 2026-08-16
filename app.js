@@ -5,8 +5,18 @@
    ============================================================ */
 
 // ─── Constants ───────────────────────────────────────────────
-const DB_KEY = 'catverse_db_v5_clean';
-const SESSION_KEY = 'catverse_session_v5_clean';
+const DB_KEY = 'catverse_master_db';
+const SESSION_KEY = 'catverse_master_session';
+
+const LEGACY_DB_KEYS = [
+  'catverse_db_v5_clean', 'catverse_db_v4_clean', 'catverse_db_v3',
+  'catverse_db_v2', 'catverse_db_v1', 'catverse_db', 'meowsnap_db_v2', 'meowsnap_db'
+];
+
+const LEGACY_SESSION_KEYS = [
+  'catverse_session_v5_clean', 'catverse_session_v4_clean', 'catverse_session_v3',
+  'catverse_session_v2', 'catverse_session_v1', 'catverse_session', 'meowsnap_session'
+];
 
 // ─── Preset Avatars (SVG data-URIs) ─────────────────────────
 function generatePresetAvatar(index) {
@@ -39,28 +49,68 @@ function createDefaultDB() {
   };
 }
 
-// ─── Store (Local Cache + Session Persistence) ───────────────
+// ─── Store (Permanent Multi-Version Cache + Session Persistence) ─
 const Store = {
   _data: null,
 
   load() {
+    let data = createDefaultDB();
+
+    // 1. Load Master DB
     try {
-      let raw = localStorage.getItem(DB_KEY);
-      this._data = raw ? JSON.parse(raw) : createDefaultDB();
-    } catch {
-      this._data = createDefaultDB();
+      const masterRaw = localStorage.getItem(DB_KEY);
+      if (masterRaw) {
+        const parsed = JSON.parse(masterRaw);
+        if (parsed && typeof parsed === 'object') data = { ...data, ...parsed };
+      }
+    } catch (e) {}
+
+    // 2. Scan and merge all legacy databases so no account is ever wiped upon code updates!
+    for (const k of LEGACY_DB_KEYS) {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.users) data.users = { ...parsed.users, ...(data.users || {}) };
+            if (parsed.posts && Array.isArray(parsed.posts)) {
+              const existingIds = new Set((data.posts || []).map(p => p.id));
+              parsed.posts.forEach(p => {
+                if (p && p.id && !existingIds.has(p.id)) {
+                  data.posts.push(p);
+                  existingIds.add(p.id);
+                }
+              });
+            }
+          }
+        }
+      } catch (e) {}
     }
 
-    if (!this._data.users) this._data.users = {};
-    if (!this._data.posts) this._data.posts = [];
+    if (!data.users) data.users = {};
+    if (!data.posts) data.posts = [];
 
-    const activeSession = localStorage.getItem(SESSION_KEY);
-    if (activeSession && this._data.users[activeSession]) {
-      this._data.currentUser = activeSession;
-    } else {
-      this._data.currentUser = null;
+    // 3. Resolve active user session across master & legacy keys
+    let activeSession = localStorage.getItem(SESSION_KEY);
+    if (!activeSession) {
+      for (const sk of LEGACY_SESSION_KEYS) {
+        const candidate = localStorage.getItem(sk);
+        if (candidate && data.users[candidate]) {
+          activeSession = candidate;
+          break;
+        }
+      }
     }
 
+    if (activeSession && data.users[activeSession]) {
+      data.currentUser = activeSession;
+    } else if (Object.keys(data.users).length > 0 && !data.currentUser) {
+      // Keep previous valid session if found
+      const firstUser = Object.keys(data.users)[0];
+      if (activeSession === firstUser) data.currentUser = firstUser;
+    }
+
+    this._data = data;
     this.save();
     return this._data;
   },
@@ -68,8 +118,16 @@ const Store = {
   save() {
     try {
       localStorage.setItem(DB_KEY, JSON.stringify(this._data));
+      // Mirror to legacy keys for safety
+      LEGACY_DB_KEYS.forEach(k => {
+        try { localStorage.setItem(k, JSON.stringify(this._data)); } catch (e) {}
+      });
+
       if (this._data.currentUser) {
         localStorage.setItem(SESSION_KEY, this._data.currentUser);
+        LEGACY_SESSION_KEYS.forEach(sk => {
+          try { localStorage.setItem(sk, this._data.currentUser); } catch (e) {}
+        });
       } else {
         localStorage.removeItem(SESSION_KEY);
       }
@@ -86,6 +144,8 @@ const Store = {
   reset() {
     localStorage.removeItem(DB_KEY);
     localStorage.removeItem(SESSION_KEY);
+    LEGACY_DB_KEYS.forEach(k => localStorage.removeItem(k));
+    LEGACY_SESSION_KEYS.forEach(sk => localStorage.removeItem(sk));
     this._data = createDefaultDB();
     this.save();
   }
