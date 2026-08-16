@@ -5,8 +5,8 @@
    ============================================================ */
 
 // ─── Constants ───────────────────────────────────────────────
-const DB_KEY = 'catverse_app_db';
-const SESSION_KEY = 'catverse_active_session_user';
+const DB_KEY = 'catverse_db_v5_clean';
+const SESSION_KEY = 'catverse_session_v5_clean';
 
 // Cat / Feline related ImageNet class keywords for MobileNet AI detection
 const FELINE_KEYWORDS = [
@@ -55,16 +55,6 @@ const Store = {
   load() {
     try {
       let raw = localStorage.getItem(DB_KEY);
-      if (!raw) {
-        const previousKeys = ['CatVerse_db_v6', 'CatVerse_db_v5', 'CatVerse_db_v4', 'CatVerse_db_v3', 'meowsnap_db_v4'];
-        for (const k of previousKeys) {
-          const prevData = localStorage.getItem(k);
-          if (prevData) {
-            raw = prevData;
-            break;
-          }
-        }
-      }
       this._data = raw ? JSON.parse(raw) : createDefaultDB();
     } catch {
       this._data = createDefaultDB();
@@ -73,16 +63,8 @@ const Store = {
     if (!this._data.users) this._data.users = {};
     if (!this._data.posts) this._data.posts = [];
 
-    // Purge deleted account @sebastian
-    if (this._data.users['sebastian']) delete this._data.users['sebastian'];
-    if (this._data.users['Sebastian']) delete this._data.users['Sebastian'];
-    this._data.posts = this._data.posts.filter(p => p.author !== 'sebastian' && p.author !== 'Sebastian');
-
     const activeSession = localStorage.getItem(SESSION_KEY);
-    if (activeSession === 'sebastian' || activeSession === 'Sebastian') {
-      localStorage.removeItem(SESSION_KEY);
-      this._data.currentUser = null;
-    } else if (activeSession && this._data.users[activeSession]) {
+    if (activeSession && this._data.users[activeSession]) {
       this._data.currentUser = activeSession;
     } else {
       this._data.currentUser = null;
@@ -183,12 +165,8 @@ function initCloudSync() {
       localStorage: false
     });
 
-    globalPostsNode = gun.get('catverse_global_posts_v4');
-    globalUsersNode = gun.get('catverse_global_users_v4');
-
-    // Broadcast nullification for deleted accounts
-    globalUsersNode.get('sebastian').put(null);
-    globalUsersNode.get('Sebastian').put(null);
+    globalPostsNode = gun.get('catverse_global_posts_v5');
+    globalUsersNode = gun.get('catverse_global_users_v5');
 
     // Real-Time Incoming Posts from Any Device Across the World
     globalPostsNode.map().on((postJson, postId) => {
@@ -202,7 +180,7 @@ function initCloudSync() {
       }
       try {
         const post = typeof postJson === 'string' ? JSON.parse(postJson) : postJson;
-        if (post && post.id && post.author !== 'sebastian' && post.author !== 'Sebastian') {
+        if (post && post.id) {
           const existingIdx = Store.data.posts.findIndex(p => p.id === post.id);
           if (existingIdx >= 0) {
             Store.data.posts[existingIdx] = post;
