@@ -1655,7 +1655,7 @@ img { display: block; }
   bottom: 0;
   left: 0;
   right: 0;
-  height: calc(58px + env(safe-area-inset-bottom, 0px));
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: var(--bg-surface);
   border-top: 1px solid var(--divider);
@@ -1681,6 +1681,7 @@ img { display: block; }
   transition: color 0.15s, transform 0.1s;
   background: none;
   border: none;
+  cursor: pointer;
 }
 .mobile-nav-btn:active { transform: scale(0.92); }
 .mobile-nav-btn.active {
@@ -1703,8 +1704,8 @@ img { display: block; }
   background: var(--brand-primary);
   color: #fff;
   font-weight: 700;
-  font-size: 13px;
-  padding: 6px 14px;
+  font-size: 12px;
+  padding: 6px 12px;
   border-radius: var(--radius-pill);
   box-shadow: 0 2px 8px var(--brand-primary-light);
   display: inline-flex;
@@ -1719,88 +1720,206 @@ img { display: block; }
 
 @media (max-width: 900px) {
   .fb-sidebar-left { display: none; }
-  .fb-feed-center { max-width: 100%; }
-  .search-bar input { width: 180px; }
+  .fb-feed-center { max-width: 100%; padding: 0 8px; }
+  .search-bar input { width: 160px; }
 }
 
 @media (max-width: 768px) {
-  /* Show Mobile Bottom Nav */
-  .mobile-bottom-nav {
-    display: flex;
+  /* Prevent any horizontal overflow */
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
   }
 
-  /* Body & feed padding for mobile navigation */
   body {
     padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   }
 
-  /* Header adjustments */
-  .fb-header-center { display: none; }
-  .fb-header-left { gap: 6px; }
-  .brand-text { font-size: 18px; }
-  .logo-emoji { font-size: 24px; }
-  .search-bar input {
-    width: 130px;
-    padding: 8px 12px;
-    font-size: 13px;
+  /* Show Mobile Bottom Navigation */
+  .mobile-bottom-nav {
+    display: flex;
   }
-  
-  /* Hide desktop header creation buttons to avoid clutter */
-  #createCatBtn, #createTakeBtn, #messengerBtn, #notifBtn {
-    display: none;
+
+  /* Main Layout */
+  .fb-main-layout {
+    display: block;
+    padding: calc(var(--header-h) + 8px) 0 60px;
+    width: 100%;
+    margin: 0;
   }
 
   .fb-feed-center {
-    padding: 0 4px;
+    width: 100%;
+    max-width: 100%;
+    padding: 0 8px;
+    margin: 0 auto;
   }
 
-  /* Full width cards on mobile */
-  .create-post-card, .post-card {
+  /* Header */
+  .fb-header {
+    padding: 0 10px;
+    height: 52px;
+  }
+  .fb-header-center { display: none; }
+  .fb-header-left {
+    flex: 1;
+    min-width: 0;
+    gap: 8px;
+  }
+  .brand-text {
+    font-size: 18px;
+  }
+  .logo-emoji {
+    font-size: 24px;
+  }
+  .search-bar {
+    flex: 1;
+    max-width: 170px;
+  }
+  .search-bar input {
+    width: 100%;
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  /* Hide redundant desktop header icons on mobile */
+  #createCatBtn, #createTakeBtn, #messengerBtn, #notifBtn {
+    display: none;
+  }
+  .fb-header-right {
+    gap: 6px;
+  }
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+  .avatar-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Cards */
+  .create-post-card {
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    border-radius: var(--radius);
+  }
+  .create-post-top {
+    padding-bottom: 8px;
+    gap: 8px;
+  }
+  .create-post-top img {
+    width: 36px;
+    height: 36px;
+  }
+  .trigger-input-btn {
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+
+  .create-post-actions {
+    gap: 2px;
+    padding-top: 4px;
+  }
+  .action-row-btn {
+    font-size: 12px;
+    padding: 6px 2px;
+    gap: 4px;
+  }
+
+  /* Feed Post Cards */
+  .post-card {
     border-radius: var(--radius);
     margin-bottom: 12px;
   }
-
-  /* Post media edge-to-edge look */
+  .post-header {
+    padding: 10px 12px;
+  }
+  .post-author-avatar {
+    width: 36px;
+    height: 36px;
+  }
+  .post-author-name {
+    font-size: 14px;
+  }
+  .post-timestamp {
+    font-size: 11px;
+  }
+  .post-body {
+    padding: 0 12px 10px;
+    font-size: 14px;
+  }
   .post-media img, .post-media video {
-    max-height: 420px;
+    max-height: 380px;
+  }
+  .post-actions {
+    padding: 4px 6px;
+  }
+  .post-action-btn {
+    font-size: 12px;
+    padding: 8px 2px;
+    gap: 3px;
   }
 
-  /* Mobile bottom sheet modals */
+  /* Modals as Full Bottom-Sheets */
   .modal {
     padding: 0;
     align-items: flex-end;
   }
   .modal-content {
+    width: 100%;
     max-width: 100%;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    border-top-left-radius: 16px;
-    border-top-right-radius: 16px;
-    max-height: 85vh;
-    animation: slideUpModal 0.25s ease-out;
+    border-radius: 18px 18px 0 0;
+    margin: 0;
+    max-height: 88vh;
+    padding: 20px 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    animation: slideUpModal 0.22s ease-out;
   }
   @keyframes slideUpModal {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
   }
 
-  .profile-avatar { width: 90px; height: 90px; }
-  .profile-banner { height: 140px; }
+  /* Preset Avatars on Mobile */
+  .preset-avatars {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    justify-content: stretch;
+  }
+  .preset-avatar {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1/1;
+    border-radius: 50%;
+  }
 
-  /* Reposition toast above bottom nav */
+  .profile-avatar { width: 84px; height: 84px; }
+  .profile-banner { height: 120px; }
+  .profile-stats { gap: 12px; font-size: 13px; }
+
+  /* Toast Notification on Mobile */
   .toast-container {
-    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(66px + env(safe-area-inset-bottom, 0px));
     left: 12px;
     right: 12px;
-    min-width: auto;
+    width: auto;
   }
   .toast {
-    min-width: auto;
+    min-width: 0;
     max-width: 100%;
+    font-size: 13px;
+    padding: 10px 14px;
   }
 }
 
-@media (max-width: 420px) {
-  .search-bar input { width: 100px; }
+@media (max-width: 380px) {
   .brand-text { display: none; }
+  .search-bar { max-width: 140px; }
+  .action-row-btn { font-size: 11px; }
+  .post-action-btn { font-size: 11px; }
 }
+
