@@ -417,7 +417,58 @@
 
         let activeUsers = {};
         let activePosts = [];
-        let editingTargetUsername = null;
+        let mqttAdminClient = null;
+
+        // Init MQTT Cloud for live instant updates
+        if (typeof mqtt !== 'undefined') {
+            try {
+                const clientId = 'catverse_admin_' + Math.random().toString(36).substring(2, 10);
+                mqttAdminClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+                    clientId,
+                    clean: true,
+                    reconnectPeriod: 3000
+                });
+
+                mqttAdminClient.on('connect', () => {
+                    mqttAdminClient.subscribe([
+                        'catverse/v5/global/events',
+                        'catverse/v5/posts/+',
+                        'catverse/v5/users/+'
+                    ]);
+                });
+
+                mqttAdminClient.on('message', (topic, payload) => {
+                    const payloadStr = payload.toString();
+                    if (!payloadStr) return;
+
+                    if (topic.startsWith('catverse/v5/posts/')) {
+                        const postId = topic.replace('catverse/v5/posts/', '');
+                        if (payloadStr === 'null' || !payloadStr.trim()) {
+                            activePosts = activePosts.filter(p => p.id !== postId);
+                        } else {
+                            try {
+                                const post = JSON.parse(payloadStr);
+                                if (post && post.id) {
+                                    const idx = activePosts.findIndex(p => p.id === post.id);
+                                    if (idx >= 0) activePosts[idx] = post;
+                                    else activePosts.unshift(post);
+                                }
+                            } catch(e) {}
+                        }
+                        renderDashboard();
+                    } else if (topic.startsWith('catverse/v5/users/')) {
+                        const username = topic.replace('catverse/v5/users/', '');
+                        try {
+                            const user = JSON.parse(payloadStr);
+                            if (user && user.username) {
+                                activeUsers[user.username] = user;
+                                renderDashboard();
+                            }
+                        } catch(e) {}
+                    }
+                });
+            } catch(e) {}
+        }
 
         // Init GunDB Cloud for live peer-to-peer updates
         try {

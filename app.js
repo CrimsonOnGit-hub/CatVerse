@@ -233,34 +233,140 @@ function compressImage(fileOrDataUrl, maxWidth = 800, maxHeight = 800, quality =
   });
 }
 
-// ─── Real-Time Global Cloud Sync (Dual-Engine: GunDB + MQTT WebSockets) ──
+// ─── Real-Time Global Cloud Sync (Dual-Engine: Retained MQTT + GunDB WebSockets) ──
 let gun = null;
 let globalPostsNode = null;
 let globalUsersNode = null;
 let mqttClient = null;
 
 const CLOUD_TOPIC_EVENTS = 'catverse/v5/global/events';
+const CLOUD_TOPIC_POSTS_PREFIX = 'catverse/v5/posts/';
+const CLOUD_TOPIC_USERS_PREFIX = 'catverse/v5/users/';
+const CLOUD_TOPIC_POSTS_WILDCARD = 'catverse/v5/posts/+';
+const CLOUD_TOPIC_USERS_WILDCARD = 'catverse/v5/users/+';
+const CLOUD_TOPIC_SYNC_REQ = 'catverse/v5/sync/req';
+const CLOUD_TOPIC_SYNC_RES = 'catverse/v5/sync/res';
 
 function initCloudSync() {
-  // 1. MQTT Cloud WebSockets (Instant <50ms broadcast across all devices worldwide)
+  const clientId = 'catverse_' + Math.random().toString(36).substring(2, 10);
+
+  // 1. MQTT Cloud WebSockets with Retained Multi-Device State
   if (typeof mqtt !== 'undefined') {
     try {
-      const clientId = 'catverse_client_' + Math.random().toString(36).substring(2, 10);
       mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
         clientId,
         clean: true,
-        reconnectPeriod: 3000
+        reconnectPeriod: 3000,
+        connectTimeout: 5000
       });
 
       mqttClient.on('connect', () => {
-        console.log('📡 Connected to Global CatVerse Real-Time Cloud Relay');
-        mqttClient.subscribe(CLOUD_TOPIC_EVENTS);
+        console.log('📡 Connected to Global CatVerse Cloud Relay');
+        mqttClient.subscribe([
+          CLOUD_TOPIC_EVENTS,
+          CLOUD_TOPIC_POSTS_WILDCARD,
+          CLOUD_TOPIC_USERS_WILDCARD,
+          CLOUD_TOPIC_SYNC_REQ,
+          CLOUD_TOPIC_SYNC_RES
+        ]);
+
+        // Request full state from any active peer
+        setTimeout(() => {
+          try {
+            mqttClient.publish(CLOUD_TOPIC_SYNC_REQ, JSON.stringify({ from: clientId }));
+          } catch(e) {}
+        }, 500);
+
+        // Announce local posts to cloud
+        syncLocalToCloud();
       });
 
       mqttClient.on('message', (topic, payload) => {
+        const payloadStr = payload.toString();
+        if (!payloadStr) return;
+
+        // Individual Retained Post
+        if (topic.startsWith(CLOUD_TOPIC_POSTS_PREFIX)) {
+          const postId = topic.replace(CLOUD_TOPIC_POSTS_PREFIX, '');
+          if (payloadStr === 'null' || payloadStr === '{}' || !payloadStr.trim()) {
+            Store.data.posts = Store.data.posts.filter(p => p.id !== postId);
+            Store.save();
+            App.renderFeed();
+          } else {
+            try {
+              const post = JSON.parse(payloadStr);
+              if (post && post.id) {
+                const idx = Store.data.posts.findIndex(p => p.id === post.id);
+                if (idx >= 0) {
+                  Store.data.posts[idx] = post;
+                } else {
+                  Store.data.posts.unshift(post);
+                }
+                Store.save();
+                App.renderFeed();
+              }
+            } catch (e) {}
+          }
+          return;
+        }
+
+        // Individual Retained User
+        if (topic.startsWith(CLOUD_TOPIC_USERS_PREFIX)) {
+          const username = topic.replace(CLOUD_TOPIC_USERS_PREFIX, '');
+          try {
+            const user = JSON.parse(payloadStr);
+            if (user && user.username) {
+              Store.data.users[user.username] = {
+                ...Store.data.users[user.username],
+                ...user
+              };
+              Store.save();
+              App.renderFriendsSidebar();
+            }
+          } catch (e) {}
+          return;
+        }
+
+        // Full State Peer Sync Request
+        if (topic === CLOUD_TOPIC_SYNC_REQ) {
+          try {
+            const req = JSON.parse(payloadStr);
+            if (req.from !== clientId && (Store.data.posts.length > 0 || Object.keys(Store.data.users).length > 0)) {
+              mqttClient.publish(CLOUD_TOPIC_SYNC_RES, JSON.stringify({
+                posts: Store.data.posts,
+                users: Store.data.users,
+                to: req.from
+              }));
+            }
+          } catch (e) {}
+          return;
+        }
+
+        // Full State Peer Sync Response
+        if (topic === CLOUD_TOPIC_SYNC_RES) {
+          try {
+            const res = JSON.parse(payloadStr);
+            if (res.to === clientId) {
+              if (res.users) {
+                Store.data.users = { ...Store.data.users, ...res.users };
+              }
+              if (res.posts && Array.isArray(res.posts)) {
+                const map = new Map();
+                [...Store.data.posts, ...res.posts].forEach(p => { if (p && p.id) map.set(p.id, p); });
+                Store.data.posts = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+              }
+              Store.save();
+              App.renderFeed();
+              App.renderFriendsSidebar();
+            }
+          } catch (e) {}
+          return;
+        }
+
+        // Real-Time Event Broadcast
         if (topic === CLOUD_TOPIC_EVENTS) {
           try {
-            const { event, data } = JSON.parse(payload.toString());
+            const { event, data } = JSON.parse(payloadStr);
             handleCloudEvent(event, data);
           } catch (e) {}
         }
@@ -283,8 +389,8 @@ function initCloudSync() {
         localStorage: false
       });
 
-      globalPostsNode = gun.get('catverse_global_posts_v5');
-      globalUsersNode = gun.get('catverse_global_users_v5');
+      globalPostsNode = gun.get('catverse_master_posts');
+      globalUsersNode = gun.get('catverse_master_users');
 
       // Real-Time Incoming Posts from GunDB
       globalPostsNode.map().on((postJson, postId) => {
@@ -333,6 +439,23 @@ function initCloudSync() {
       console.warn('Gun cloud init:', err);
     }
   }
+}
+
+// ── Publish Local Database to Cloud on Startup ───────────────
+function syncLocalToCloud() {
+  if (!mqttClient || !mqttClient.connected) return;
+  try {
+    (Store.data.posts || []).forEach(p => {
+      if (p && p.id) {
+        mqttClient.publish(CLOUD_TOPIC_POSTS_PREFIX + p.id, JSON.stringify(p), { retain: true, qos: 1 });
+      }
+    });
+    Object.values(Store.data.users || {}).forEach(u => {
+      if (u && u.username) {
+        mqttClient.publish(CLOUD_TOPIC_USERS_PREFIX + u.username, JSON.stringify(u), { retain: true, qos: 1 });
+      }
+    });
+  } catch (e) {}
 }
 
 // ── Handle Global Real-Time Cloud Events ───────────────────────
@@ -392,9 +515,16 @@ function handleCloudEvent(event, data) {
 
 // ── Global Broadcast Dispatcher ───────────────────────────────
 function broadcastGlobal(event, data) {
-  // 1. MQTT Cloud Broadcast
+  // 1. MQTT Cloud Broadcast & Retained Topic Persistence
   try {
     if (mqttClient && mqttClient.connected) {
+      if (event === 'NEW_POST') {
+        mqttClient.publish(CLOUD_TOPIC_POSTS_PREFIX + data.id, JSON.stringify(data), { retain: true, qos: 1 });
+      } else if (event === 'DELETE_POST') {
+        mqttClient.publish(CLOUD_TOPIC_POSTS_PREFIX + data.postId, '', { retain: true, qos: 1 });
+      } else if (event === 'NEW_USER') {
+        mqttClient.publish(CLOUD_TOPIC_USERS_PREFIX + data.username, JSON.stringify(data), { retain: true, qos: 1 });
+      }
       mqttClient.publish(CLOUD_TOPIC_EVENTS, JSON.stringify({ event, data }));
     }
   } catch (e) {}
