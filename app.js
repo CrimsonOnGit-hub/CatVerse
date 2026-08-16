@@ -1,6 +1,7 @@
 /* ============================================================
    CatVerse — A Real Social Network for Cat Lovers
-   app.js — Full MySQL/REST API + Live WebSocket Synchronization
+   app.js — Universal Hybrid Architecture (MySQL + Cloud Sync + Local)
+   Works seamlessly on GitHub Pages, Netlify, and Localhost Node/MySQL
    ============================================================ */
 
 // ─── Constants ───────────────────────────────────────────────
@@ -54,6 +55,16 @@ const Store = {
   load() {
     try {
       let raw = localStorage.getItem(DB_KEY);
+      if (!raw) {
+        const previousKeys = ['CatVerse_db_v6', 'CatVerse_db_v5', 'CatVerse_db_v4', 'CatVerse_db_v3', 'meowsnap_db_v4'];
+        for (const k of previousKeys) {
+          const prevData = localStorage.getItem(k);
+          if (prevData) {
+            raw = prevData;
+            break;
+          }
+        }
+      }
       this._data = raw ? JSON.parse(raw) : createDefaultDB();
     } catch {
       this._data = createDefaultDB();
@@ -99,123 +110,136 @@ const Store = {
   }
 };
 
-// ─── Backend API Client (MySQL / SQLite REST Endpoints) ──────
+// ─── Backend API Client (With Fail-Safe Offline/Static Fallback) ─
 const API = {
+  backendAvailable: null,
+
   async req(endpoint, options = {}) {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       const res = await fetch(endpoint, {
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         ...options
       });
+      clearTimeout(timeoutId);
+      if (!res.ok) return null;
+      this.backendAvailable = true;
       return await res.json();
-    } catch (err) {
-      console.warn(`API Error [${endpoint}]:`, err);
+    } catch {
+      this.backendAvailable = false;
       return null;
     }
   },
 
-  async getPosts() {
-    return await this.req('/api/posts');
-  },
-
-  async createPost(postData) {
-    return await this.req('/api/posts', {
-      method: 'POST',
-      body: JSON.stringify(postData)
-    });
-  },
-
-  async deletePost(postId) {
-    return await this.req(`/api/posts/${postId}`, { method: 'DELETE' });
-  },
-
-  async toggleLike(postId, username) {
-    return await this.req(`/api/posts/${postId}/like`, {
-      method: 'POST',
-      body: JSON.stringify({ username })
-    });
-  },
-
-  async addComment(postId, author, text) {
-    return await this.req(`/api/posts/${postId}/comments`, {
-      method: 'POST',
-      body: JSON.stringify({ author, text })
-    });
-  },
-
-  async deleteComment(postId, commentId) {
-    return await this.req(`/api/posts/${postId}/comments/${commentId}`, { method: 'DELETE' });
-  },
-
-  async getUsers() {
-    return await this.req('/api/users');
-  },
-
-  async toggleFriend(userA, userB) {
-    return await this.req('/api/friends/toggle', {
-      method: 'POST',
-      body: JSON.stringify({ userA, userB })
-    });
-  },
-
-  async toggleSave(username, postId) {
-    return await this.req('/api/saves/toggle', {
-      method: 'POST',
-      body: JSON.stringify({ username, postId })
-    });
-  },
-
-  async signup(userData) {
-    return await this.req('/api/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify(userData)
-    });
-  },
-
-  async login(username, password) {
-    return await this.req('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password })
-    });
-  }
+  async getPosts() { return await this.req('/api/posts'); },
+  async createPost(postData) { return await this.req('/api/posts', { method: 'POST', body: JSON.stringify(postData) }); },
+  async deletePost(postId) { return await this.req(`/api/posts/${postId}`, { method: 'DELETE' }); },
+  async toggleLike(postId, username) { return await this.req(`/api/posts/${postId}/like`, { method: 'POST', body: JSON.stringify({ username }) }); },
+  async addComment(postId, author, text) { return await this.req(`/api/posts/${postId}/comments`, { method: 'POST', body: JSON.stringify({ author, text }) }); },
+  async deleteComment(postId, commentId) { return await this.req(`/api/posts/${postId}/comments/${commentId}`, { method: 'DELETE' }); },
+  async getUsers() { return await this.req('/api/users'); },
+  async toggleFriend(userA, userB) { return await this.req('/api/friends/toggle', { method: 'POST', body: JSON.stringify({ userA, userB }) }); },
+  async toggleSave(username, postId) { return await this.req('/api/saves/toggle', { method: 'POST', body: JSON.stringify({ username, postId }) }); },
+  async signup(userData) { return await this.req('/api/auth/signup', { method: 'POST', body: JSON.stringify(userData) }); },
+  async login(username, password) { return await this.req('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); }
 };
 
-// ─── Real-Time WebSocket Listener ────────────────────────────
+// ─── Real-Time Global Cloud Sync (GunDB WebSockets) ──────────
+let gun = null;
+let globalPostsNode = null;
+let globalUsersNode = null;
+
+function initCloudSync() {
+  if (typeof Gun === 'undefined') return;
+  try {
+    gun = Gun({
+      peers: [
+        'https://gun-manhattan.herokuapp.com/gun',
+        'https://relay.peer.ooo/gun',
+        'https://peer.waller.li/gun'
+      ],
+      localStorage: false
+    });
+
+    globalPostsNode = gun.get('catverse_global_posts_v4');
+    globalUsersNode = gun.get('catverse_global_users_v4');
+
+    // Real-Time Incoming Posts from Any Device Across the World
+    globalPostsNode.map().on((postJson, postId) => {
+      if (!postJson) {
+        if (Store.data.posts.some(p => p.id === postId)) {
+          Store.data.posts = Store.data.posts.filter(p => p.id !== postId);
+          Store.save();
+          App.renderFeed();
+        }
+        return;
+      }
+      try {
+        const post = typeof postJson === 'string' ? JSON.parse(postJson) : postJson;
+        if (post && post.id) {
+          const existingIdx = Store.data.posts.findIndex(p => p.id === post.id);
+          if (existingIdx >= 0) {
+            Store.data.posts[existingIdx] = post;
+          } else {
+            Store.data.posts.unshift(post);
+            if (post.author !== Store.data.currentUser) {
+              showToast(`🐾 New live post from @${post.author}!`, 'info');
+            }
+          }
+          Store.save();
+          App.renderFeed();
+        }
+      } catch (e) {}
+    });
+
+    // Real-Time Incoming Users
+    globalUsersNode.map().on((userJson, username) => {
+      if (!userJson) return;
+      try {
+        const user = typeof userJson === 'string' ? JSON.parse(userJson) : userJson;
+        if (user && user.username) {
+          Store.data.users[user.username] = {
+            ...Store.data.users[user.username],
+            ...user
+          };
+          Store.save();
+          App.renderFriendsSidebar();
+        }
+      } catch (e) {}
+    });
+  } catch (err) {
+    console.warn('Gun cloud init:', err);
+  }
+}
+
+// ─── Real-Time Node Backend WebSocket Listener ───────────────
 let ws = null;
 
 function initWebSocket() {
+  if (location.protocol === 'file:') return;
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${location.host}/ws`;
 
   try {
     ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      console.log('⚡ Connected to CatVerse Real-Time WebSocket backend');
-    };
-
     ws.onmessage = (event) => {
       try {
         const { event: evType, data } = JSON.parse(event.data);
-
         switch (evType) {
           case 'NEW_POST':
             if (data && !Store.data.posts.some(p => p.id === data.id)) {
               Store.data.posts.unshift(data);
               Store.save();
               App.renderFeed();
-              if (data.author !== Store.data.currentUser) {
-                showToast(`🐾 New live post from @${data.author}!`, 'info');
-              }
             }
             break;
-
           case 'DELETE_POST':
             Store.data.posts = Store.data.posts.filter(p => p.id !== data.postId);
             Store.save();
             App.renderFeed();
             break;
-
           case 'POST_LIKES_UPDATED':
             const postToLike = Store.data.posts.find(p => p.id === data.postId);
             if (postToLike) {
@@ -224,7 +248,6 @@ function initWebSocket() {
               App.renderFeed();
             }
             break;
-
           case 'NEW_COMMENT':
             const postForComment = Store.data.posts.find(p => p.id === data.postId);
             if (postForComment) {
@@ -236,16 +259,6 @@ function initWebSocket() {
               }
             }
             break;
-
-          case 'DELETE_COMMENT':
-            const postForDel = Store.data.posts.find(p => p.id === data.postId);
-            if (postForDel && postForDel.comments) {
-              postForDel.comments = postForDel.comments.filter(c => c.id !== data.commentId);
-              Store.save();
-              App.renderFeed();
-            }
-            break;
-
           case 'NEW_USER':
             if (data && data.username) {
               Store.data.users[data.username] = {
@@ -256,23 +269,14 @@ function initWebSocket() {
               App.renderFriendsSidebar();
             }
             break;
-
           case 'FRIENDSHIP_CHANGED':
             App.syncFriendship(data.userA, data.userB, data.isFriend);
             break;
         }
-      } catch (err) {
-        console.warn('WS message error:', err);
-      }
+      } catch (err) {}
     };
-
-    ws.onclose = () => {
-      // Reconnect after 3 seconds if disconnected
-      setTimeout(initWebSocket, 3000);
-    };
-  } catch (e) {
-    console.warn('WebSocket init error:', e);
-  }
+    ws.onclose = () => setTimeout(initWebSocket, 4000);
+  } catch (e) {}
 }
 
 // ─── Utilities ───────────────────────────────────────────────
@@ -337,10 +341,9 @@ async function loadAIClassifier() {
   try {
     isModelLoading = true;
     mobilenetModel = await mobilenet.load({ version: 2, alpha: 1.0 });
-    console.log('✅ MobileNet model loaded.');
+    console.log('✅ MobileNet neural network loaded.');
     return mobilenetModel;
   } catch (err) {
-    console.error('Failed to load MobileNet model:', err);
     return null;
   } finally {
     isModelLoading = false;
@@ -372,10 +375,11 @@ const App = {
     this.bindEvents();
 
     loadAIClassifier();
+    initCloudSync();
     initWebSocket();
 
-    // Fetch initial SQL data from backend
-    await this.syncWithBackend();
+    // Sync with backend if available
+    this.syncWithBackend();
 
     if (Store.data.currentUser && Store.data.users[Store.data.currentUser]) {
       this.hideAuth();
@@ -392,7 +396,7 @@ const App = {
         API.getUsers()
       ]);
 
-      if (backendPosts && Array.isArray(backendPosts)) {
+      if (backendPosts && Array.isArray(backendPosts) && backendPosts.length > 0) {
         Store.data.posts = backendPosts;
       }
       if (backendUsers && typeof backendUsers === 'object') {
@@ -401,9 +405,7 @@ const App = {
       Store.save();
       this.renderFeed();
       this.renderFriendsSidebar();
-    } catch (e) {
-      console.warn('Backend sync failed:', e);
-    }
+    } catch (e) {}
   },
 
   syncFriendship(userA, userB, isFriend) {
@@ -497,18 +499,30 @@ const App = {
     const username = $('#loginUsername').value.trim().toLowerCase();
     const password = $('#loginPassword').value;
 
+    // Check backend first
+    let user = null;
     const res = await API.login(username, password);
-    if (!res || !res.success) {
-      showToast(res?.error || 'Invalid username or password', 'error');
+    if (res && res.success) {
+      user = res.user;
+    } else {
+      // Fallback to local store
+      const localUser = Store.data.users[username];
+      if (localUser && localUser.password === password) {
+        user = localUser;
+      }
+    }
+
+    if (!user) {
+      showToast('Invalid username or password', 'error');
       return;
     }
 
-    Store.data.users[username] = res.user;
+    Store.data.users[username] = user;
     Store.data.currentUser = username;
     Store.save();
     this.hideAuth();
     this.enterApp();
-    showToast(`Welcome back, ${res.user.displayName}!`, 'success');
+    showToast(`Welcome back, ${user.displayName}!`, 'success');
   },
 
   async handleSignup(e) {
@@ -542,26 +556,35 @@ const App = {
 
     const submitSignup = async (avatar) => {
       const displayName = username.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      const res = await API.signup({
+      const newUser = {
         username,
         password,
         displayName,
         bio: bio || 'Proud cat parent 🐾',
-        avatar
-      });
+        avatar,
+        friends: [],
+        followers: [],
+        following: [],
+        saved: [],
+        joinedAt: Date.now()
+      };
 
-      if (!res || !res.success) {
-        banner.textContent = res?.error || 'Signup failed';
-        banner.classList.remove('hidden');
-        return;
-      }
-
-      Store.data.users[username] = res.user;
+      // Always save locally so signup NEVER fails
+      Store.data.users[username] = newUser;
       Store.data.currentUser = username;
       Store.save();
+
+      // Broadcast to GunDB cloud
+      try {
+        globalUsersNode?.get(username).put(JSON.stringify(newUser));
+      } catch (e) {}
+
+      // Asynchronously push to backend API (if available)
+      API.signup(newUser).catch(() => {});
+
       this.hideAuth();
       this.enterApp();
-      showToast('Account created in MySQL database! 🎉', 'success');
+      showToast('Account created! Welcome to CatVerse! 🎉', 'success');
       $('#signupUsername').value = '';
       $('#signupPassword').value = '';
       $('#signupBio').value = '';
@@ -768,7 +791,8 @@ const App = {
       return;
     }
 
-    const postPayload = {
+    const newPost = {
+      id: uniqueId(),
       type: 'cat',
       author: Store.data.currentUser,
       catName,
@@ -776,18 +800,27 @@ const App = {
       media: this.uploadedCatPhoto,
       mediaType: 'image',
       tags,
+      likes: [],
+      comments: [],
       aiBreed: this.aiDetectedBreed || 'Domestic Cat',
       aiConfidence: this.aiConfidence || 100,
+      timestamp: Date.now(),
     };
 
-    const res = await API.createPost(postPayload);
-    if (res && res.success) {
-      this.closeInlineCreate();
-      this.switchFeed('home');
-      showToast(`${catName} has been saved to MySQL & posted! 🐾`, 'success');
-    } else {
-      showToast('Error saving post to database', 'error');
-    }
+    Store.data.posts.unshift(newPost);
+    Store.save();
+
+    // Broadcast to GunDB cloud
+    try {
+      globalPostsNode?.get(newPost.id).put(JSON.stringify(newPost));
+    } catch (e) {}
+
+    // Post to backend API
+    API.createPost(newPost).catch(() => {});
+
+    this.closeInlineCreate();
+    this.switchFeed('home');
+    showToast(`${catName} has been posted! 🐾`, 'success');
   },
 
   // ── CatTake Video Handlers ────────────────────────────────
@@ -908,24 +941,32 @@ const App = {
       return;
     }
 
-    const postPayload = {
+    const newPost = {
+      id: uniqueId(),
       type: 'cattake',
       author: Store.data.currentUser,
       title,
       description: description || '',
       media: this.uploadedTakeVideo || null,
       mediaType: 'video',
-      tags
+      tags,
+      likes: [],
+      comments: [],
+      timestamp: Date.now(),
     };
 
-    const res = await API.createPost(postPayload);
-    if (res && res.success) {
-      this.closeInlineCreate();
-      this.switchFeed('home');
-      showToast(`CatTake "${title}" saved & posted live! 🎬`, 'success');
-    } else {
-      showToast('Error saving video post', 'error');
-    }
+    Store.data.posts.unshift(newPost);
+    Store.save();
+
+    try {
+      globalPostsNode?.get(newPost.id).put(JSON.stringify(newPost));
+    } catch (e) {}
+
+    API.createPost(newPost).catch(() => {});
+
+    this.closeInlineCreate();
+    this.switchFeed('home');
+    showToast(`CatTake "${title}" posted! 🎬`, 'success');
   },
 
   // ── Feed Rendering ──────────────────────────────────────
@@ -1128,7 +1169,7 @@ const App = {
     const otherUsers = Object.values(Store.data.users).filter(u => u.username !== currentUser);
 
     if (otherUsers.length === 0) {
-      container.innerHTML = `<div class="contacts-empty">No other members registered yet.<br>Create accounts to connect!</div>`;
+      container.innerHTML = `<div class="contacts-empty">No other members registered yet.<br>Invite friends to connect!</div>`;
       return;
     }
 
@@ -1157,11 +1198,41 @@ const App = {
     const currentUser = Store.data.currentUser;
     if (!currentUser || targetUsername === currentUser) return;
 
-    const res = await API.toggleFriend(currentUser, targetUsername);
-    if (res && res.success) {
-      this.syncFriendship(currentUser, targetUsername, res.isFriend);
-      showToast(res.isFriend ? `Added @${targetUsername} as friend! 🐾` : `Removed @${targetUsername} from friends`, 'info');
+    const currentObj = Store.data.users[currentUser];
+    const targetObj = Store.data.users[targetUsername];
+    if (!currentObj || !targetObj) return;
+
+    if (!currentObj.friends) currentObj.friends = [];
+    if (!targetObj.friends) targetObj.friends = [];
+
+    const idx = currentObj.friends.indexOf(targetUsername);
+    let isFriend = false;
+    if (idx >= 0) {
+      currentObj.friends.splice(idx, 1);
+      targetObj.friends = targetObj.friends.filter(u => u !== currentUser);
+      isFriend = false;
+      showToast(`Removed @${targetUsername} from friends`, 'info');
+    } else {
+      currentObj.friends.push(targetUsername);
+      if (!targetObj.friends.includes(currentUser)) {
+        targetObj.friends.push(currentUser);
+      }
+      isFriend = true;
+      showToast(`You and ${targetObj.displayName} are now friends! 🐾`, 'success');
     }
+
+    Store.save();
+
+    try {
+      globalUsersNode?.get(currentUser).put(JSON.stringify(currentObj));
+      globalUsersNode?.get(targetUsername).put(JSON.stringify(targetObj));
+    } catch (e) {}
+
+    API.toggleFriend(currentUser, targetUsername).catch(() => {});
+
+    this.renderFriendsSidebar();
+    if (this.viewingUser) this.openProfile(this.viewingUser);
+    if (this.currentFeed === 'friends') this.renderFeed();
   },
 
   openFindFriendsModal() {
@@ -1226,12 +1297,15 @@ const App = {
 
     switch (action) {
       case 'like':
-        const res = await API.toggleLike(postId, currentUser);
-        if (res && res.success) {
-          post.likes = res.likes;
-          Store.save();
-          this.renderFeed();
-        }
+        if (!post.likes) post.likes = [];
+        const likeIdx = post.likes.indexOf(currentUser);
+        if (likeIdx >= 0) post.likes.splice(likeIdx, 1);
+        else post.likes.push(currentUser);
+
+        Store.save();
+        try { globalPostsNode?.get(post.id).put(JSON.stringify(post)); } catch (e) {}
+        API.toggleLike(postId, currentUser).catch(() => {});
+        this.renderFeed();
         break;
 
       case 'comment':
@@ -1249,59 +1323,57 @@ const App = {
         break;
 
       case 'save':
-        const saveRes = await API.toggleSave(currentUser, postId);
-        if (saveRes && saveRes.success) {
-          const user = Store.data.users[currentUser];
-          if (!user.saved) user.saved = [];
-          if (saveRes.saved) {
-            if (!user.saved.includes(postId)) user.saved.push(postId);
-            showToast('Post saved to bookmarks!', 'success');
-          } else {
-            user.saved = user.saved.filter(id => id !== postId);
-            showToast('Post removed from saved', 'info');
-          }
-          Store.save();
-          this.renderFeed();
+        const user = Store.data.users[currentUser];
+        if (!user.saved) user.saved = [];
+        const saveIdx = user.saved.indexOf(postId);
+        if (saveIdx >= 0) {
+          user.saved.splice(saveIdx, 1);
+          showToast('Post removed from saved', 'info');
+        } else {
+          user.saved.push(postId);
+          showToast('Post saved to bookmarks!', 'success');
         }
+        Store.save();
+        API.toggleSave(currentUser, postId).catch(() => {});
+        this.renderFeed();
         break;
     }
   },
 
   async handleComment(postId, text) {
-    const res = await API.addComment(postId, Store.data.currentUser, text);
-    if (res && res.success) {
-      const post = Store.data.posts.find(p => p.id === postId);
-      if (post) {
-        if (!post.comments) post.comments = [];
-        if (!post.comments.some(c => c.id === res.comment.id)) {
-          post.comments.push(res.comment);
-          Store.save();
-          this.renderFeed();
-        }
-      }
-    }
+    const post = Store.data.posts.find(p => p.id === postId);
+    if (!post) return;
+    if (!post.comments) post.comments = [];
+    const comment = {
+      id: uniqueId(),
+      author: Store.data.currentUser,
+      text: text.trim(),
+      timestamp: Date.now(),
+    };
+    post.comments.push(comment);
+    Store.save();
+    try { globalPostsNode?.get(post.id).put(JSON.stringify(post)); } catch (e) {}
+    API.addComment(postId, Store.data.currentUser, text).catch(() => {});
+    this.renderFeed();
   },
 
   async deleteComment(postId, commentId) {
-    const res = await API.deleteComment(postId, commentId);
-    if (res && res.success) {
-      const post = Store.data.posts.find(p => p.id === postId);
-      if (post && post.comments) {
-        post.comments = post.comments.filter(c => c.id !== commentId);
-        Store.save();
-        this.renderFeed();
-      }
-    }
+    const post = Store.data.posts.find(p => p.id === postId);
+    if (!post) return;
+    post.comments = post.comments.filter(c => c.id !== commentId);
+    Store.save();
+    try { globalPostsNode?.get(post.id).put(JSON.stringify(post)); } catch (e) {}
+    API.deleteComment(postId, commentId).catch(() => {});
+    this.renderFeed();
   },
 
   async deletePost(postId) {
-    const res = await API.deletePost(postId);
-    if (res && res.success) {
-      Store.data.posts = Store.data.posts.filter(p => p.id !== postId);
-      Store.save();
-      this.renderFeed();
-      showToast('Post deleted from database', 'info');
-    }
+    Store.data.posts = Store.data.posts.filter(p => p.id !== postId);
+    Store.save();
+    try { globalPostsNode?.get(postId).put(null); } catch (e) {}
+    API.deletePost(postId).catch(() => {});
+    this.renderFeed();
+    showToast('Post deleted', 'info');
   },
 
   viewAllComments(postId) {
