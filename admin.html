@@ -553,7 +553,10 @@
                     currentUser: localStorage.getItem(SESSION_KEY) || null
                 };
                 localStorage.setItem(DB_KEY, JSON.stringify(data));
-            } catch(e) {}
+                LEGACY_DB_KEYS.forEach(k => {
+                    try { localStorage.setItem(k, JSON.stringify(data)); } catch (e) {}
+                });
+            } catch (e) {}
         }
 
         function notify(msg) {
@@ -655,6 +658,7 @@
                     </td>
                 `;
                 tbody.appendChild(tr);
+            });
         }
 
         // Actions
@@ -683,7 +687,17 @@
             };
 
             activeUsers[username] = newUser;
+            saveLocalData();
+
+            // Cloud sync
             try { globalUsersNode?.get(username).put(JSON.stringify(newUser)); } catch(e) {}
+            try {
+                if (mqttAdminClient && mqttAdminClient.connected) {
+                    mqttAdminClient.publish('catverse/v5/users/' + username, JSON.stringify(newUser), { retain: true, qos: 1 });
+                    mqttAdminClient.publish('catverse/v5/global/events', JSON.stringify({ event: 'NEW_USER', data: newUser }));
+                }
+            } catch(e) {}
+
             // Sync with backend if available
             fetch('/api/auth/signup', {
                 method: 'POST',
@@ -700,16 +714,30 @@
             if (!confirm(`Are you sure you want to delete user @${username} and all their posts?`)) return;
 
             delete activeUsers[username];
+            saveLocalData();
+
             try { globalUsersNode?.get(username).put(null); } catch(e) {}
+            try {
+                if (mqttAdminClient && mqttAdminClient.connected) {
+                    mqttAdminClient.publish('catverse/v5/users/' + username, '', { retain: true, qos: 1 });
+                    mqttAdminClient.publish('catverse/v5/global/events', JSON.stringify({ event: 'DELETE_USER', data: { username } }));
+                }
+            } catch(e) {}
 
             // Delete user posts
             const postsToDelete = activePosts.filter(p => p.author === username);
             postsToDelete.forEach(p => {
                 try { globalPostsNode?.get(p.id).put(null); } catch(e) {}
+                try {
+                    if (mqttAdminClient && mqttAdminClient.connected) {
+                        mqttAdminClient.publish('catverse/v5/posts/' + p.id, '', { retain: true, qos: 1 });
+                    }
+                } catch(e) {}
                 fetch(`/api/posts/${p.id}`, { method: 'DELETE' }).catch(() => {});
             });
 
             activePosts = activePosts.filter(p => p.author !== username);
+            saveLocalData();
 
             renderDashboard();
             notify(`Account @${username} and data deleted.`);
@@ -719,7 +747,16 @@
             if (!confirm(`Delete post "${postId}"?`)) return;
 
             activePosts = activePosts.filter(p => p.id !== postId);
+            saveLocalData();
+
             try { globalPostsNode?.get(postId).put(null); } catch(e) {}
+            try {
+                if (mqttAdminClient && mqttAdminClient.connected) {
+                    mqttAdminClient.publish('catverse/v5/posts/' + postId, '', { retain: true, qos: 1 });
+                    mqttAdminClient.publish('catverse/v5/global/events', JSON.stringify({ event: 'DELETE_POST', data: { postId } }));
+                }
+            } catch(e) {}
+
             fetch(`/api/posts/${postId}`, { method: 'DELETE' }).catch(() => {});
 
             renderDashboard();
