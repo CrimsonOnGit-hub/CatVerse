@@ -10,11 +10,16 @@ const SESSION_KEY = 'catverse_session_v5_clean';
 
 // Cat / Feline related ImageNet class keywords for MobileNet AI detection
 const FELINE_KEYWORDS = [
-  'cat', 'tabby', 'tiger cat', 'persian cat', 'siamese cat', 'egyptian cat',
+  'cat', 'tabby', 'tiger cat', 'persian cat', 'siamese cat', 'siamese', 'egyptian cat',
   'cougar', 'lynx', 'leopard', 'snow leopard', 'jaguar', 'lion', 'cheetah',
   'panther', 'feline', 'kitten', 'angora', 'burmese', 'abyssinian',
   'ragdoll', 'sphynx', 'bengal', 'mainecoon', 'manx', 'savannah',
-  'norwegian forest', 'domestic cat', 'felis'
+  'norwegian forest', 'domestic cat', 'felis', 'seal point', 'blue point',
+  'chocolate point', 'lilac point', 'balinese', 'oriental shorthair', 'birman',
+  'himalayan', 'chartreux', 'russian blue', 'korat', 'tonkinese', 'singapura',
+  'somali', 'devon rex', 'cornish rex', 'british shorthair', 'american shorthair',
+  'scottish fold', 'selkirk rex', 'munchkin', 'turkish van', 'turkish angora',
+  'caracal', 'serval', 'ocelot', 'bobcat', 'jaguarundi', 'margay', 'wildcat', 'pussycat'
 ];
 
 // ─── Preset Avatars (SVG data-URIs) ─────────────────────────
@@ -758,7 +763,7 @@ const App = {
         return;
       }
 
-      const predictions = await model.classify(imageElement, 5);
+      const predictions = await model.classify(imageElement, 10);
 
       if (!predictions || predictions.length === 0) {
         banner.className = 'status-banner status-fail';
@@ -768,24 +773,32 @@ const App = {
       }
 
       let catMatch = null;
+      let totalFelineProb = 0;
+
       predictions.forEach(p => {
         const lowerName = p.className.toLowerCase();
         const isFeline = FELINE_KEYWORDS.some(k => lowerName.includes(k));
-        if (isFeline && (!catMatch || p.probability > catMatch.probability)) {
-          catMatch = p;
+        if (isFeline) {
+          totalFelineProb += p.probability;
+          if (!catMatch || p.probability > catMatch.probability) {
+            catMatch = p;
+          }
         }
       });
 
-      predList.innerHTML = predictions.map(p => {
+      predList.innerHTML = predictions.slice(0, 5).map(p => {
         const isMatch = FELINE_KEYWORDS.some(k => p.className.toLowerCase().includes(k));
         const pct = Math.round(p.probability * 100);
         return `<span class="ai-pred-chip ${isMatch ? 'match' : ''}">${p.className.split(',')[0]} (${pct}%)</span>`;
       }).join('');
       predList.classList.remove('hidden');
 
-      if (catMatch && catMatch.probability >= 0.08) {
-        const pct = Math.round(catMatch.probability * 100);
-        const primaryBreed = catMatch.className.split(',')[0];
+      if (catMatch && (catMatch.probability >= 0.04 || totalFelineProb >= 0.06)) {
+        const pct = Math.min(100, Math.round(Math.max(catMatch.probability, totalFelineProb) * 100));
+        let primaryBreed = catMatch.className.split(',')[0];
+        if (primaryBreed.toLowerCase().includes('siamese')) {
+          primaryBreed = 'Siamese Cat';
+        }
         banner.className = 'status-banner status-pass';
         banner.textContent = `✅ AI Verified: ${primaryBreed} (${pct}% confidence). Cat detected!`;
         submitBtn.disabled = false;
