@@ -514,28 +514,63 @@ const App = {
 
   async handleLogin(e) {
     e.preventDefault();
-    const identifier = $('#loginUsername').value.trim().toLowerCase();
+    const rawInput = $('#loginUsername').value.trim();
+    const cleanIdentifier = rawInput.replace(/^@/, '').trim().toLowerCase();
     const password = $('#loginPassword').value;
 
-    // Check backend first
     let user = null;
-    const res = await API.login(identifier, password);
+
+    // 1. Try Backend REST API (if running on Node server)
+    const res = await API.login(cleanIdentifier, password);
     if (res && res.success) {
       user = res.user;
-    } else {
-      // Fallback to local store: match username OR email
+    }
+
+    // 2. Check local store (username, email, or display name)
+    if (!user) {
       const allUsers = Object.values(Store.data.users || {});
       const localUser = allUsers.find(u => 
-        (u.username && u.username.toLowerCase() === identifier) ||
-        (u.email && u.email.toLowerCase() === identifier)
+        (u.username && u.username.toLowerCase() === cleanIdentifier) ||
+        (u.email && u.email.toLowerCase() === cleanIdentifier) ||
+        (u.displayName && u.displayName.toLowerCase() === cleanIdentifier)
       );
       if (localUser && localUser.password === password) {
         user = localUser;
       }
     }
 
+    // 3. If still not found, query GunDB cloud peer network in real-time
+    if (!user && typeof globalUsersNode !== 'undefined' && globalUsersNode) {
+      const cloudUserJson = await new Promise(resolve => {
+        const timeout = setTimeout(() => resolve(null), 1800);
+        globalUsersNode.get(cleanIdentifier).once((data) => {
+          clearTimeout(timeout);
+          resolve(data);
+        });
+      });
+
+      if (cloudUserJson) {
+        try {
+          const cloudUser = typeof cloudUserJson === 'string' ? JSON.parse(cloudUserJson) : cloudUserJson;
+          if (cloudUser && cloudUser.password === password) {
+            user = cloudUser;
+            Store.data.users[cloudUser.username] = cloudUser;
+          }
+        } catch (err) {}
+      }
+    }
+
     if (!user) {
-      showToast('Invalid username/email or password', 'error');
+      // Check if user exists but wrong password for clearer error
+      const userExists = Object.values(Store.data.users || {}).some(u => 
+        (u.username && u.username.toLowerCase() === cleanIdentifier) ||
+        (u.email && u.email.toLowerCase() === cleanIdentifier)
+      );
+      if (userExists) {
+        showToast('Incorrect password. Please check your password and try again.', 'error');
+      } else {
+        showToast('Account not found. Please check your username/email or click "Create Account".', 'error');
+      }
       return;
     }
 
@@ -544,7 +579,7 @@ const App = {
     Store.save();
     this.hideAuth();
     this.enterApp();
-    showToast(`Welcome back, ${user.displayName}!`, 'success');
+    showToast(`Welcome back, ${user.displayName}! 🐾`, 'success');
   },
 
   async handleSignup(e) {
