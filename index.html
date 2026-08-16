@@ -31,10 +31,10 @@
         
         <nav class="fb-header-center">
             <button class="nav-tab active" data-feed="home" title="Home">🏠</button>
-            <button class="nav-tab" data-feed="friends" title="Friends">👥</button>
-            <button class="nav-tab" data-feed="cattakes" title="CatTakes">🎬</button>
             <button class="nav-tab" data-feed="cats" title="Cats">🐾</button>
-            <button class="nav-tab" data-feed="trending" title="Trending">🔥</button>
+            <button class="nav-tab" data-feed="non-cats" title="Non-Cats">🚫 Non-Cats</button>
+            <button class="nav-tab" data-feed="cattakes" title="CatTakes">🎬</button>
+            <button class="nav-tab" data-feed="friends" title="Friends">👥</button>
             <button class="nav-tab" data-feed="saved" title="Saved">🔖</button>
         </nav>
         
@@ -74,7 +74,10 @@
                 </a>
             </div>
             <ul class="sidebar-nav">
-                <li><button class="sidebar-item" data-side-feed="home">🏠 News Feed</button></li>
+                <li><button class="sidebar-item active" data-side-feed="home">🏠 News Feed</button></li>
+                <li><button class="sidebar-item" data-side-feed="cats">🐾 Cats</button></li>
+                <li><button class="sidebar-item" data-side-feed="non-cats">🚫 Non-Cats</button></li>
+                <li><button class="sidebar-item" data-side-feed="cattakes">🎬 CatTakes</button></li>
                 <li><button class="sidebar-item" data-side-feed="friends">👥 Friends</button></li>
                 <li><button class="sidebar-item" data-side-feed="saved">🔖 Saved Posts</button></li>
             </ul>

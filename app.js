@@ -868,6 +868,7 @@ const App = {
       const isTikaEasterEgg = isTabby && (hasCollarOrBell || hasRedCollar);
 
       if (catMatch && (catMatch.probability >= 0.04 || totalFelineProb >= 0.06)) {
+        this.aiIsCat = true;
         const pct = Math.min(100, Math.round(Math.max(catMatch.probability, totalFelineProb) * 100));
         let primaryBreed = catMatch.className.split(',')[0];
         
@@ -893,12 +894,16 @@ const App = {
         this.aiDetectedBreed = primaryBreed;
         this.aiConfidence = pct;
       } else {
-        const top = predictions[0];
+        this.aiIsCat = false;
+        this.isTikaEasterEgg = false;
+        const top = predictions[0] || { className: 'Non-Cat Object', probability: 0.9 };
         const topPct = Math.round(top.probability * 100);
         const topLabel = top.className.split(',')[0];
-        banner.className = 'status-banner status-fail';
-        banner.textContent = `❌ AI Blocked: Detected "${topLabel}" (${topPct}%). Only cats are allowed on CatVerse!`;
-        submitBtn.disabled = true;
+        banner.className = 'status-banner status-pass';
+        banner.textContent = `ℹ️ AI Categorization: Detected "${topLabel}" (${topPct}%). Will be categorized as Non-Cat.`;
+        submitBtn.disabled = false;
+        this.aiDetectedBreed = topLabel;
+        this.aiConfidence = topPct;
       }
     } catch (err) {
       banner.className = 'status-banner status-pass';
@@ -917,6 +922,7 @@ const App = {
     const previewImg = $('#inlineCatPhotoPreview');
     previewImg.src = dataUrl;
     $('#inlineCatPhotoPreviewWrapper')?.classList.remove('hidden');
+    $('#inlineSubmitCatBtn').disabled = false;
 
     previewImg.onload = () => {
       this.runAICatDetection(previewImg);
@@ -929,38 +935,36 @@ const App = {
     const description = $('#inlineCatDescription').value.trim();
     let tags = $('#inlineCatTags').value.trim().split(',').map(t => t.trim()).filter(Boolean);
 
-    // Easter egg tag conversion: if Tika easter egg is active or user uploaded a tabby with red bell collar
+    // Easter egg tag conversion: if Tika easter egg is active
     if (this.isTikaEasterEgg) {
       tags = tags.map(t => t.toLowerCase() === 'tabby' ? 'Tika' : t);
       if (!tags.includes('Tika')) {
         tags.unshift('Tika');
       }
-    } else {
-      tags = tags.map(t => t);
-    }
-
-    if (!catName) {
-      showToast('Please enter the cat\'s name', 'error');
-      return;
     }
 
     if (!this.uploadedCatPhoto) {
-      showToast('Please upload a cat photo', 'error');
+      showToast('Please upload a photo', 'error');
       return;
     }
 
+    const isCat = this.aiIsCat !== false;
+
     const newPost = {
       id: uniqueId(),
-      type: 'cat',
+      type: isCat ? 'cat' : 'non-cat',
+      category: isCat ? 'cats' : 'non-cats',
+      isCat: isCat,
       author: Store.data.currentUser,
-      catName,
-      description: description || `Meet ${catName}! 🐾`,
+      catName: catName || (isCat ? 'Cat Photo' : 'Non-Cat Post'),
+      description: description || (isCat ? `Meet ${catName || 'my cat'}! 🐾` : 'Non-cat photo'),
       media: this.uploadedCatPhoto,
       mediaType: 'image',
       tags,
       likes: [],
       comments: [],
-      aiBreed: this.aiDetectedBreed || 'Domestic Cat',
+      aiBreed: isCat ? (this.aiDetectedBreed || 'Domestic Cat') : null,
+      nonCatLabel: !isCat ? (this.aiDetectedBreed || 'Object') : null,
       aiConfidence: this.aiConfidence || 100,
       timestamp: Date.now(),
     };
@@ -977,8 +981,8 @@ const App = {
     API.createPost(newPost).catch(() => {});
 
     this.closeInlineCreate();
-    this.switchFeed('home');
-    showToast(`${catName} has been posted! 🐾`, 'success');
+    this.switchFeed(isCat ? 'home' : 'non-cats');
+    showToast(isCat ? `${newPost.catName} has been posted! 🐾` : 'Post added to Non-Cats! 🚫', 'success');
   },
 
   // ── CatTake Video Handlers ────────────────────────────────
@@ -1150,9 +1154,14 @@ const App = {
       posts = posts.filter(p => friendList.includes(p.author) || p.author === currentUser);
     } else if (this.currentFeed === 'cats') {
       tabHeader.classList.remove('hidden');
-      tabTitle.textContent = '🐾 Cat Photos';
-      tabSub.textContent = 'AI-verified cat photography';
-      posts = posts.filter(p => p.type === 'cat');
+      tabTitle.textContent = '🐾 Cats Feed';
+      tabSub.textContent = 'AI-verified cat photography and clips';
+      posts = posts.filter(p => p.type === 'cat' && p.isCat !== false);
+    } else if (this.currentFeed === 'non-cats') {
+      tabHeader.classList.remove('hidden');
+      tabTitle.textContent = '🚫 Non-Cats Feed';
+      tabSub.textContent = 'Photos categorized as non-feline subjects';
+      posts = posts.filter(p => p.type === 'non-cat' || p.isCat === false || p.category === 'non-cats');
     } else if (this.currentFeed === 'cattakes') {
       tabHeader.classList.remove('hidden');
       tabTitle.textContent = '🎬 CatTakes';
@@ -1161,7 +1170,7 @@ const App = {
     } else if (this.currentFeed === 'trending') {
       tabHeader.classList.remove('hidden');
       tabTitle.textContent = '🔥 Trending';
-      tabSub.textContent = 'Most loved cats right now';
+      tabSub.textContent = 'Most loved posts right now';
       posts = posts.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
     } else if (this.currentFeed === 'saved') {
       tabHeader.classList.remove('hidden');
@@ -1183,8 +1192,10 @@ const App = {
         emptyText.textContent = 'No posts from friends yet. Add friends to populate your feed!';
       } else if (this.currentFeed === 'saved') {
         emptyText.textContent = 'You haven\'t saved any posts yet. Click "Save" on any post to bookmark it.';
+      } else if (this.currentFeed === 'non-cats') {
+        emptyText.textContent = 'No non-cat posts yet. Any uploaded photos classified as non-cats will appear here!';
       } else {
-        emptyText.textContent = 'No posts yet! Be the first to share your cat with "What\'s your cat doing today?" above.';
+        emptyText.textContent = 'No posts yet! Be the first to share a post with "What\'s your cat doing today?" above.';
       }
     } else {
       emptyState.classList.add('hidden');
@@ -1229,7 +1240,7 @@ const App = {
 
     let mediaHtml = '';
     if (post.media && post.mediaType === 'image') {
-      mediaHtml = `<div class="post-media"><img src="${post.media}" alt="${post.catName || 'Cat photo'}" loading="lazy"></div>`;
+      mediaHtml = `<div class="post-media"><img src="${post.media}" alt="${post.catName || 'Post media'}" loading="lazy"></div>`;
     } else if (post.media && post.mediaType === 'video') {
       mediaHtml = `<div class="post-media"><video src="${post.media}" controls preload="metadata"></video></div>`;
     }
@@ -1244,9 +1255,16 @@ const App = {
       titleHtml = `<h3 class="post-title">${escapeHtml(post.title)}</h3>`;
     }
 
-    const aiBadge = (post.type === 'cat' && post.aiBreed)
-      ? `<span class="post-ai-pill">🤖 ${escapeHtml(post.aiBreed)}</span>`
-      : '';
+    const isNonCat = post.type === 'non-cat' || post.isCat === false || post.category === 'non-cats';
+
+    let aiBadge = '';
+    if (isNonCat) {
+      aiBadge = `<span class="post-ai-pill non-cat-pill">🚫 Non-Cat: ${escapeHtml(post.nonCatLabel || post.aiBreed || 'Object')}</span>`;
+    } else if (post.aiBreed) {
+      aiBadge = `<span class="post-ai-pill">🐾 ${escapeHtml(post.aiBreed)}</span>`;
+    }
+
+    const typeLabel = (post.type === 'cattake') ? '🎬 CatTake' : (isNonCat ? '🚫 Non-Cat' : '🐾 Cat Photo');
 
     card.innerHTML = `
       <div class="post-header">
@@ -1257,7 +1275,7 @@ const App = {
             ${post.catName ? `<span class="post-cat-label">— ${escapeHtml(post.catName)}</span>` : ''}
           </div>
           <div class="post-meta-row">
-            <span class="post-timestamp">${timeAgo(post.timestamp)} · ${post.type === 'cattake' ? '🎬 CatTake' : '🐾 Cat Photo'}</span>
+            <span class="post-timestamp">${timeAgo(post.timestamp)} · ${typeLabel}</span>
             ${aiBadge}
           </div>
         </div>
