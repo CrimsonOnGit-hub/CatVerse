@@ -568,6 +568,13 @@ const App = {
       return;
     }
 
+    // Strict account uniqueness check
+    if (Store.data.users && Store.data.users[username]) {
+      banner.textContent = `The username "@${username}" is already taken. Please choose another username or log in.`;
+      banner.classList.remove('hidden');
+      return;
+    }
+
     const pfpInput = $('#signupPfpUpload');
     let avatarSrc = this.selectedSignupAvatar;
 
@@ -578,6 +585,13 @@ const App = {
     }
 
     const submitSignup = async (avatar) => {
+      // Re-verify uniqueness before saving
+      if (Store.data.users && Store.data.users[username]) {
+        banner.textContent = `The username "@${username}" is already taken. Please choose another username.`;
+        banner.classList.remove('hidden');
+        return;
+      }
+
       const displayName = username.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       const newUser = {
         username,
@@ -592,7 +606,6 @@ const App = {
         joinedAt: Date.now()
       };
 
-      // Always save locally so signup NEVER fails
       Store.data.users[username] = newUser;
       Store.data.currentUser = username;
       Store.save();
