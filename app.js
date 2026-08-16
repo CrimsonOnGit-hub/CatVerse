@@ -793,14 +793,67 @@ const App = {
       }).join('');
       predList.classList.remove('hidden');
 
+      let isTabby = false;
+      let hasCollarOrBell = false;
+
+      predictions.forEach(p => {
+        const lowerName = p.className.toLowerCase();
+        if (lowerName.includes('tabby') || lowerName.includes('tiger cat')) {
+          isTabby = true;
+        }
+        if (lowerName.includes('bell') || lowerName.includes('collar') || lowerName.includes('brass') || lowerName.includes('chime') || lowerName.includes('whistle') || lowerName.includes('necklace') || lowerName.includes('bow')) {
+          hasCollarOrBell = true;
+        }
+      });
+
+      // Analyze image canvas for red collar colors in neck region
+      let hasRedCollar = false;
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 100;
+        canvas.height = 100;
+        ctx.drawImage(imageElement, 0, 0, 100, 100);
+        const imgData = ctx.getImageData(0, 0, 100, 100).data;
+        let redPixelCount = 0;
+        for (let i = 0; i < imgData.length; i += 4) {
+          const r = imgData[i];
+          const g = imgData[i + 1];
+          const b = imgData[i + 2];
+          // Red dominance check for red collar
+          if (r > 130 && r > g * 1.5 && r > b * 1.5) {
+            redPixelCount++;
+          }
+        }
+        if (redPixelCount > 30) {
+          hasRedCollar = true;
+        }
+      } catch (e) {}
+
+      const isTikaEasterEgg = isTabby && (hasCollarOrBell || hasRedCollar);
+
       if (catMatch && (catMatch.probability >= 0.04 || totalFelineProb >= 0.06)) {
         const pct = Math.min(100, Math.round(Math.max(catMatch.probability, totalFelineProb) * 100));
         let primaryBreed = catMatch.className.split(',')[0];
-        if (primaryBreed.toLowerCase().includes('siamese')) {
-          primaryBreed = 'Siamese Cat';
+        
+        if (isTikaEasterEgg) {
+          primaryBreed = 'Tika ✨ (Tabby with Red Bell Collar)';
+          this.isTikaEasterEgg = true;
+          const tagInput = $('#inlineCatTags');
+          if (tagInput && (!tagInput.value || tagInput.value.includes('tabby'))) {
+            tagInput.value = tagInput.value ? tagInput.value.replace(/tabby/gi, 'Tika') : 'Tika';
+          }
+          banner.className = 'status-banner status-pass';
+          banner.textContent = `✨ Easter Egg Unlocked: Tika detected! 🔔 (Tabby with Red Bell Collar)`;
+        } else {
+          this.isTikaEasterEgg = false;
+          if (primaryBreed.toLowerCase().includes('siamese')) {
+            primaryBreed = 'Siamese Cat';
+          }
+          banner.className = 'status-banner status-pass';
+          banner.textContent = `✅ AI Verified: ${primaryBreed} (${pct}% confidence). Cat detected!`;
         }
-        banner.className = 'status-banner status-pass';
-        banner.textContent = `✅ AI Verified: ${primaryBreed} (${pct}% confidence). Cat detected!`;
+
         submitBtn.disabled = false;
         this.aiDetectedBreed = primaryBreed;
         this.aiConfidence = pct;
@@ -839,7 +892,17 @@ const App = {
     e.preventDefault();
     const catName = $('#inlineCatName').value.trim();
     const description = $('#inlineCatDescription').value.trim();
-    const tags = $('#inlineCatTags').value.trim().split(',').map(t => t.trim()).filter(Boolean);
+    let tags = $('#inlineCatTags').value.trim().split(',').map(t => t.trim()).filter(Boolean);
+
+    // Easter egg tag conversion: if Tika easter egg is active or user uploaded a tabby with red bell collar
+    if (this.isTikaEasterEgg) {
+      tags = tags.map(t => t.toLowerCase() === 'tabby' ? 'Tika' : t);
+      if (!tags.includes('Tika')) {
+        tags.unshift('Tika');
+      }
+    } else {
+      tags = tags.map(t => t);
+    }
 
     if (!catName) {
       showToast('Please enter the cat\'s name', 'error');
