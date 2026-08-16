@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CatVerse Admin Panel 🛠️</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <style>
+        :root {
+            --bg-page: #0f172a;
+            --bg-surface: #1e293b;
+            --bg-card: #334155;
+            --border: #475569;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #06b6d4;
+            --primary-hover: #0891b2;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-page);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 24px 16px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Top Header */
+        .admin-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-surface);
+            padding: 16px 24px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .brand-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-box h1 {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-pill {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 12px;
+        }
+
+        .link-btn {
+            background: var(--bg-card);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s;
+        }
+        .link-btn:hover { background: var(--border); }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+        .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+        .stat-val { font-size: 28px; font-weight: 800; margin-top: 4px; color: #fff; }
+
+        /* Actions Bar */
+        .action-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .quick-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        input, select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            width: 100%;
+        }
+        input:focus { border-color: var(--primary); }
+
+        .btn {
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .btn:active { transform: scale(0.96); }
+        .btn-primary { background: var(--primary); color: #0f172a; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-danger:hover { background: var(--danger-hover); }
+        .btn-warning { background: var(--warning); color: #000; }
+        .btn-sm { padding: 6px 10px; font-size: 12px; }
+
+        /* Data Tables */
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        th {
+            background: var(--bg-card);
+            padding: 12px 14px;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            vertical-align: middle;
+        }
+
+        tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+        .avatar-preview {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            vertical-align: middle;
+            border: 1px solid var(--border);
+        }
+
+        .media-preview-sm {
+            width: 48px;
+            height: 48px;
+            border-radius: 6px;
+            object-fit: cover;
+            background: #000;
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .badge-cat { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .badge-noncat { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+        .badge-take { background: rgba(129, 140, 248, 0.2); color: #a5b4fc; }
+
+        /* Modal Overlay */
+        .modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 9999;
+        }
+        .modal.hidden { display: none; }
+        .modal-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 100%;
+            max-width: 440px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        /* Toast */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #06b6d4;
+            color: #0f172a;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 14px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+            transition: all 0.25s;
+            transform: translateY(100px);
+            opacity: 0;
+            z-index: 10000;
+        }
+        #toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Top Admin Bar -->
+        <header class="admin-header">
+            <div class="brand-box">
+                <span style="font-size:28px;">🛠️</span>
+                <div>
+                    <h1>CatVerse Master Control Panel</h1>
+                    <span class="status-pill">● System Live & Active</span>
+                </div>
+            </div>
+            <div class="nav-links">
+                <button class="btn btn-warning btn-sm" onclick="exportDataBackup()">📥 Export JSON</button>
+                <button class="btn btn-danger btn-sm" onclick="confirmWipeAll()">🧨 Factory Reset</button>
+                <a href="index.html" class="link-btn">🐾 Open CatVerse</a>
+            </div>
+        </header>
+
+        <!-- Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Registered Users</div>
+                <div class="stat-val" id="statUsers">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Posts Published</div>
+                <div class="stat-val" id="statPosts">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Verified Cat Photos</div>
+                <div class="stat-val" id="statCats">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Non-Cat Posts</div>
+                <div class="stat-val" id="statNonCats">0</div>
+            </div>
+        </div>
+
+        <!-- Create User Card -->
+        <div class="action-card">
+            <h2 class="card-title">➕ Quick Add User Account</h2>
+            <form class="quick-form" onsubmit="adminCreateUser(event)">
+                <input type="text" id="newUsername" placeholder="Username (e.g. fluffy_admin)" required>
+                <input type="email" id="newEmail" placeholder="Email (Optional)">
+                <input type="text" id="newPassword" placeholder="Password" required>
+                <input type="text" id="newDisplayName" placeholder="Display Name (Optional)">
+                <button type="submit" class="btn btn-primary">Create User</button>
+            </form>
+        </div>
+
+        <!-- Users Management Table -->
+        <div class="action-card">
+            <div class="card-title">
+                <span>👥 User Accounts (<span id="userCount">0</span>)</span>
+                <input type="text" id="userSearch" placeholder="Filter users..." style="max-width: 220px; padding: 6px 12px;" oninput="renderUsersTable()">
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Avatar</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Display Name</th>
+                            <th>Password</th>
+                            <th>Friends</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <!-- Loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Posts Management Table -->
+        <div class="action-card">
+            <div class="card-title">
+                <span>📸 All Posts & Media (<span id="postCount">0</span>)</span>
+                <input type="text" id="postSearch" placeholder="Filter posts / authors..." style="max-width: 220px; padding: 6px 12px;" oninput="renderPostsTable()">
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Media</th>
+                            <th>Type & Category</th>
+                            <th>Author</th>
+                            <th>Subject / Title</th>
+                            <th>AI Detection</th>
+                            <th>Likes / Comments</th>
+                            <th>Time</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="postsTableBody">
+                        <!-- Loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Password Modal -->
+    <div id="passwordModal" class="modal hidden">
+        <div class="modal-card">
+            <h3 style="font-size:18px; margin-bottom:12px;">🔑 Change User Password</h3>
+            <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Updating password for <strong id="modalTargetUser" style="color:#fff;">@user</strong></p>
+            <form onsubmit="savePasswordChange(event)">
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:6px;">New Password</label>
+                    <input type="text" id="modalNewPassword" required placeholder="Enter new password">
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" class="btn link-btn" onclick="closePasswordModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        const DB_KEY = 'catverse_db_v5_clean';
+        const SESSION_KEY = 'catverse_session_v5_clean';
+
+        let gun = null;
+        let globalPostsNode = null;
+        let globalUsersNode = null;
+
+        let activeUsers = {};
+        let activePosts = [];
+        let editingTargetUsername = null;
+
+        // Init GunDB Cloud for live peer-to-peer updates
+        try {
+            gun = Gun({
+                peers: [
+                    'https://gun-manhattan.herokuapp.com/gun',
+                    'https://relay.peer.ooo/gun',
+                    'https://peer.waller.li/gun'
+                ],
+                localStorage: false
+            });
+            globalPostsNode = gun.get('catverse_global_posts_v5');
+            globalUsersNode = gun.get('catverse_global_users_v5');
+
+            globalUsersNode.map().on((userJson, uName) => {
+                if (!userJson) {
+                    delete activeUsers[uName];
+                } else {
+                    try {
+                        activeUsers[uName] = typeof userJson === 'string' ? JSON.parse(userJson) : userJson;
+                    } catch(e) {}
+                }
+                renderDashboard();
+            });
+
+            globalPostsNode.map().on((postJson, pId) => {
+                if (!postJson) {
+                    activePosts = activePosts.filter(p => p.id !== pId);
+                } else {
+                    try {
+                        const post = typeof postJson === 'string' ? JSON.parse(postJson) : postJson;
+                        const idx = activePosts.findIndex(p => p.id === post.id);
+                        if (idx >= 0) activePosts[idx] = post;
+                        else activePosts.unshift(post);
+                    } catch(e) {}
+                }
+                renderDashboard();
+            });
+        } catch(e) {
+            console.warn('Gun cloud init:', e);
+        }
+
+        // Load local storage initial state
+        function loadLocalData() {
+            try {
+                const raw = localStorage.getItem(DB_KEY);
+                if (raw) {
+                    const data = JSON.parse(raw);
+                    if (data.users) activeUsers = { ...data.users, ...activeUsers };
+                    if (data.posts && Array.isArray(data.posts)) {
+                        const map = new Map();
+                        [...activePosts, ...data.posts].forEach(p => { if (p && p.id) map.set(p.id, p); });
+                        activePosts = Array.from(map.values());
+                    }
+                }
+            } catch(e) {}
+        }
+
+        function saveLocalData() {
+            try {
+                const data = {
+                    users: activeUsers,
+                    posts: activePosts,
+                    currentUser: localStorage.getItem(SESSION_KEY) || null
+                };
+                localStorage.setItem(DB_KEY, JSON.stringify(data));
+            } catch(e) {}
+        }
+
+        function notify(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        function renderDashboard() {
+            saveLocalData();
+
+            // Stats
+            const uList = Object.values(activeUsers);
+            document.getElementById('statUsers').textContent = uList.length;
+            document.getElementById('statPosts').textContent = activePosts.length;
+            document.getElementById('statCats').textContent = activePosts.filter(p => p.isCat !== false && p.type !== 'non-cat').length;
+            document.getElementById('statNonCats').textContent = activePosts.filter(p => p.isCat === false || p.type === 'non-cat' || p.category === 'non-cats').length;
+
+            document.getElementById('userCount').textContent = uList.length;
+            document.getElementById('postCount').textContent = activePosts.length;
+
+            renderUsersTable();
+            renderPostsTable();
+        }
+
+        function renderUsersTable() {
+            const filter = (document.getElementById('userSearch')?.value || '').toLowerCase();
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = '';
+
+            const uList = Object.values(activeUsers).filter(u => 
+                !filter || 
+                u.username.toLowerCase().includes(filter) || 
+                (u.displayName && u.displayName.toLowerCase().includes(filter)) ||
+                (u.email && u.email.toLowerCase().includes(filter))
+            );
+
+            if (uList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:20px;">No accounts found.</td></tr>`;
+                return;
+            }
+
+            uList.forEach(u => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><img src="${u.avatar || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐾</text></svg>'}" class="avatar-preview"></td>
+                    <td><strong>@${escapeHtml(u.username)}</strong></td>
+                    <td style="color:var(--text-muted);">${u.email ? escapeHtml(u.email) : '<em>None</em>'}</td>
+                    <td>${escapeHtml(u.displayName || u.username)}</td>
+                    <td><code>${escapeHtml(u.password || '••••')}</code></td>
+                    <td>${(u.friends || []).length} friends</td>
+                    <td>
+                        <button class="btn btn-warning btn-sm" onclick="openPasswordModal('${escapeHtml(u.username)}')">🔑 Change Pass</button>
+                        <button class="btn btn-danger btn-sm" onclick="adminDeleteUser('${escapeHtml(u.username)}')">🗑️ Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderPostsTable() {
+            const filter = (document.getElementById('postSearch')?.value || '').toLowerCase();
+            const tbody = document.getElementById('postsTableBody');
+            tbody.innerHTML = '';
+
+            const pList = activePosts.filter(p => 
+                !filter || 
+                p.author.toLowerCase().includes(filter) || 
+                (p.catName && p.catName.toLowerCase().includes(filter)) ||
+                (p.title && p.title.toLowerCase().includes(filter)) ||
+                (p.description && p.description.toLowerCase().includes(filter))
+            );
+
+            if (pList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:20px;">No posts found.</td></tr>`;
+                return;
+            }
+
+            pList.forEach(p => {
+                const isNonCat = p.isCat === false || p.type === 'non-cat' || p.category === 'non-cats';
+                const isTake = p.type === 'cattake';
+                const badgeClass = isNonCat ? 'badge-noncat' : (isTake ? 'badge-take' : 'badge-cat');
+                const badgeText = isNonCat ? '🚫 Non-Cat' : (isTake ? '🎬 CatTake' : '🐾 Cat Photo');
+
+                const mediaEl = p.media ? 
+                    (p.mediaType === 'video' ? `<video src="${p.media}" class="media-preview-sm" controls></video>` : `<img src="${p.media}" class="media-preview-sm">`)
+                    : '<em>None</em>';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${mediaEl}</td>
+                    <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+                    <td><strong>@${escapeHtml(p.author)}</strong></td>
+                    <td>${escapeHtml(p.catName || p.title || p.description || 'Post')}</td>
+                    <td><small>${escapeHtml(p.aiBreed || p.nonCatLabel || 'N/A')} (${p.aiConfidence || 100}%)</small></td>
+                    <td>❤️ ${(p.likes || []).length} &nbsp;💬 ${(p.comments || []).length}</td>
+                    <td style="color:var(--text-muted); font-size:11px;">${new Date(p.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="adminDeletePost('${escapeHtml(p.id)}')">🗑️ Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Actions
+        function adminCreateUser(e) {
+            e.preventDefault();
+            const username = document.getElementById('newUsername').value.trim().toLowerCase().replace(/\s+/g, '_');
+            const email = document.getElementById('newEmail').value.trim().toLowerCase() || null;
+            const password = document.getElementById('newPassword').value;
+            const displayName = document.getElementById('newDisplayName').value.trim() || username;
+
+            if (activeUsers[username]) {
+                alert('Username @' + username + ' already exists!');
+                return;
+            }
+
+            const newUser = {
+                username,
+                email,
+                password,
+                displayName,
+                bio: 'Account created via Admin Panel 🛠️',
+                avatar: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐾</text></svg>',
+                friends: [],
+                saved: [],
+                joinedAt: Date.now()
+            };
+
+            activeUsers[username] = newUser;
+            try { globalUsersNode?.get(username).put(JSON.stringify(newUser)); } catch(e) {}
+            // Sync with backend if available
+            fetch('/api/auth/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newUser)
+            }).catch(() => {});
+
+            renderDashboard();
+            notify(`User @${username} created successfully!`);
+            e.target.reset();
+        }
+
+        function adminDeleteUser(username) {
+            if (!confirm(`Are you sure you want to delete user @${username} and all their posts?`)) return;
+
+            delete activeUsers[username];
+            try { globalUsersNode?.get(username).put(null); } catch(e) {}
+
+            // Delete user posts
+            const postsToDelete = activePosts.filter(p => p.author === username);
+            postsToDelete.forEach(p => {
+                try { globalPostsNode?.get(p.id).put(null); } catch(e) {}
+                fetch(`/api/posts/${p.id}`, { method: 'DELETE' }).catch(() => {});
+            });
+
+            activePosts = activePosts.filter(p => p.author !== username);
+
+            renderDashboard();
+            notify(`Account @${username} and data deleted.`);
+        }
+
+        function adminDeletePost(postId) {
+            if (!confirm(`Delete post "${postId}"?`)) return;
+
+            activePosts = activePosts.filter(p => p.id !== postId);
+            try { globalPostsNode?.get(postId).put(null); } catch(e) {}
+            fetch(`/api/posts/${postId}`, { method: 'DELETE' }).catch(() => {});
+
+            renderDashboard();
+            notify('Post deleted.');
+        }
+
+        function openPasswordModal(username) {
+            editingTargetUsername = username;
+            document.getElementById('modalTargetUser').textContent = '@' + username;
+            document.getElementById('modalNewPassword').value = '';
+            document.getElementById('passwordModal').classList.remove('hidden');
+        }
+
+        function closePasswordModal() {
+            document.getElementById('passwordModal').classList.add('hidden');
+            editingTargetUsername = null;
+        }
+
+        function savePasswordChange(e) {
+            e.preventDefault();
+            const newPass = document.getElementById('modalNewPassword').value;
+            if (!newPass || !editingTargetUsername || !activeUsers[editingTargetUsername]) return;
+
+            activeUsers[editingTargetUsername].password = newPass;
+            try {
+                globalUsersNode?.get(editingTargetUsername).put(JSON.stringify(activeUsers[editingTargetUsername]));
+            } catch(e) {}
+
+            renderDashboard();
+            closePasswordModal();
+            notify(`Password for @${editingTargetUsername} updated!`);
+        }
+
+        function exportDataBackup() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+                users: activeUsers,
+                posts: activePosts,
+                exportedAt: new Date().toISOString()
+            }, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `catverse_backup_${Date.now()}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function confirmWipeAll() {
+            if (!confirm('DANGER: This will permanently wipe ALL accounts, posts, and data across the cloud and local storage! Proceed?')) return;
+            activeUsers = {};
+            activePosts = [];
+            localStorage.removeItem(DB_KEY);
+            localStorage.removeItem(SESSION_KEY);
+            renderDashboard();
+            notify('💥 All database records wiped.');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m]);
+        }
+
+        // Boot
+        loadLocalData();
+        renderDashboard();
+    </script>
+</body>
+</html>

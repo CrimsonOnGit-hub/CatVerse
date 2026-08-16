@@ -178,6 +178,7 @@ async function initDatabase() {
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE,
         password TEXT NOT NULL,
         display_name TEXT NOT NULL,
         bio TEXT,
@@ -185,6 +186,10 @@ async function initDatabase() {
         created_at INTEGER NOT NULL
       );
     `);
+
+    try {
+      await query(`ALTER TABLE users ADD COLUMN email TEXT;`);
+    } catch(e) {}
 
     await query(`
       CREATE TABLE IF NOT EXISTS posts (
@@ -572,27 +577,42 @@ app.post('/api/friends/toggle', async (req, res) => {
   }
 });
 
-// Toggle Save/Bookmark
-app.post('/api/saves/toggle', async (req, res) => {
+// ─── Admin Endpoints ─────────────────────────────────────────
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+// Admin: Delete User
+app.delete('/api/admin/users/:username', async (req, res) => {
   try {
-    const { username, postId } = req.body;
-    if (!username || !postId) return res.status(400).json({ error: 'Username and postId required' });
+    const { username } = req.params;
+    await query('DELETE FROM users WHERE username = ?', [username]);
+    await query('DELETE FROM posts WHERE author_username = ?', [username]);
+    await query('DELETE FROM likes WHERE username = ?', [username]);
+    await query('DELETE FROM comments WHERE author_username = ?', [username]);
+    await query('DELETE FROM friends WHERE user_a = ? OR user_b = ?', [username, username]);
+    await query('DELETE FROM saved_posts WHERE username = ?', [username]);
 
-    const existing = await query('SELECT * FROM saved_posts WHERE username = ? AND post_id = ?', [username, postId]);
-    let saved = false;
-
-    if (existing.length > 0) {
-      await query('DELETE FROM saved_posts WHERE username = ? AND post_id = ?', [username, postId]);
-      saved = false;
-    } else {
-      await query('INSERT INTO saved_posts (username, post_id, created_at) VALUES (?, ?, ?)', [username, postId, Date.now()]);
-      saved = true;
-    }
-
-    res.json({ success: true, saved });
+    broadcast('USER_DELETED', { username });
+    res.json({ success: true });
   } catch (err) {
-    console.error('Save toggle error:', err);
-    res.status(500).json({ error: 'Failed to toggle save' });
+    console.error('Admin delete user error:', err);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Admin: Change User Password
+app.post('/api/admin/users/:username/password', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'New password required' });
+
+    await query('UPDATE users SET password = ? WHERE username = ?', [password, username]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Admin password update error:', err);
+    res.status(500).json({ error: 'Failed to update password' });
   }
 });
 
